@@ -34,5 +34,6 @@ export interface Venta {
   fecha: Date;
   productos: ProductoVenta[];
   total: number;
+  esUber?: boolean; // Flag para identificar ventas de Uber
   notas?: string;
 }

@@ -1,4 +1,5 @@
 import { AddProductModal } from '@/components/add-product-modal';
+import { DailyTotalHeader } from '@/components/daily-total-header';
 import { FabMenu } from '@/components/fab-menu';
 import { ResetInventoryModal } from '@/components/reset-inventory-modal';
 import { SalesModal } from '@/components/sales-modal';
@@ -102,6 +103,9 @@ export default function InventoryScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      {/* Header con total del día */}
+      <DailyTotalHeader />
+
       {/* Filtros */}
       <View style={styles.filtrosContainer}>
         <TouchableOpacity
@@ -210,6 +214,12 @@ export default function InventoryScreen() {
             icon: '💰',
             color: '#51cf66',
             onPress: () => setSalesModalVisible(true),
+          },
+          {
+            label: 'Venta Uber',
+            icon: '🚗',
+            color: '#ffa94d',
+            onPress: () => Alert.alert('Próximamente', 'Funcionalidad de Venta Uber en desarrollo'),
           },
           {
             label: 'Reset Inventario',
