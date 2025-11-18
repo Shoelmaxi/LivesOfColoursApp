@@ -1,8 +1,6 @@
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { getMovimientos, getProductos, getVentas } from '@/services/storage';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
+import { getMovimientos, getProductos, getVentas, updateProducto } from '@/services/storage';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,7 +10,20 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { utils, write } from 'xlsx';
+
+// Importaciones condicionales
+let FileSystem: any;
+let Sharing: any;
+let XLSX: any;
+
+try {
+  // Usar la API legacy de expo-file-system
+  FileSystem = require('expo-file-system/legacy');
+  Sharing = require('expo-sharing');
+  XLSX = require('xlsx');
+} catch (e) {
+  console.log('Error cargando módulos:', e);
+}
 
 interface CierreTurnoModalProps {
   visible: boolean;
@@ -31,21 +42,18 @@ export function CierreTurnoModal({ visible, onClose }: CierreTurnoModalProps) {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
 
-    // Filtrar movimientos del día
     const movimientosHoy = movimientos.filter(m => {
       const fechaMov = new Date(m.fecha);
       fechaMov.setHours(0, 0, 0, 0);
       return fechaMov.getTime() === hoy.getTime();
     });
 
-    // Filtrar ventas del día
     const ventasHoy = ventas.filter(v => {
       const fechaVenta = new Date(v.fecha);
       fechaVenta.setHours(0, 0, 0, 0);
       return fechaVenta.getTime() === hoy.getTime();
     });
 
-    // Calcular datos por producto
     const datosInventario = productos.map(producto => {
       const stockApertura = producto.stockApertura || producto.stock;
       
@@ -61,7 +69,6 @@ export function CierreTurnoModal({ visible, onClose }: CierreTurnoModalProps) {
         .filter(m => m.productoId === producto.id && m.tipo === 'ocupado_ramo')
         .reduce((sum, m) => sum + m.cantidad, 0);
 
-      // Calcular vendidos
       const vendidos = ventasHoy.reduce((sum, venta) => {
         const prodVenta = venta.productos.find(p => p.productoId === producto.id);
         return sum + (prodVenta?.cantidad || 0);
@@ -89,14 +96,12 @@ export function CierreTurnoModal({ visible, onClose }: CierreTurnoModalProps) {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
 
-    // Filtrar ventas del día
     const ventasHoy = ventas.filter(v => {
       const fechaVenta = new Date(v.fecha);
       fechaVenta.setHours(0, 0, 0, 0);
       return fechaVenta.getTime() === hoy.getTime();
     });
 
-    // Crear una fila por cada venta
     const datosVentas = ventasHoy.map(venta => {
       const fecha = new Date(venta.fecha);
       const hora = fecha.toLocaleTimeString('es-CL', { 
@@ -121,9 +126,16 @@ export function CierreTurnoModal({ visible, onClose }: CierreTurnoModalProps) {
   };
 
   const exportarExcel = async () => {
+    if (!FileSystem || !Sharing || !XLSX) {
+      Alert.alert(
+        'Error',
+        'Las librerías necesarias no están instaladas correctamente. Asegúrate de haber ejecutado:\nnpx expo install expo-file-system expo-sharing\nnpm install xlsx'
+      );
+      return;
+    }
+
     setLoading(true);
     try {
-      // Generar datos
       const datosInventario = await generarReporteInventario();
       const datosVentas = await generarReporteVentas();
 
@@ -133,51 +145,54 @@ export function CierreTurnoModal({ visible, onClose }: CierreTurnoModalProps) {
         return;
       }
 
-      // Crear workbook
-      const wb = utils.book_new();
+      const wb = XLSX.utils.book_new();
 
-      // Agregar hoja de inventario
       if (datosInventario.length > 0) {
-        const wsInventario = utils.json_to_sheet(datosInventario);
-        utils.book_append_sheet(wb, wsInventario, 'Inventario');
+        const wsInventario = XLSX.utils.json_to_sheet(datosInventario);
+        XLSX.utils.book_append_sheet(wb, wsInventario, 'Inventario');
       }
 
-      // Agregar hoja de ventas
       if (datosVentas.length > 0) {
-        const wsVentas = utils.json_to_sheet(datosVentas);
-        utils.book_append_sheet(wb, wsVentas, 'Ventas');
+        const wsVentas = XLSX.utils.json_to_sheet(datosVentas);
+        XLSX.utils.book_append_sheet(wb, wsVentas, 'Ventas');
       }
 
-      // Generar archivo
-      const wbout = write(wb, { type: 'base64', bookType: 'xlsx' });
+      const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
 
-      // Guardar archivo
       const fecha = new Date().toISOString().split('T')[0];
       const fileName = `Cierre_Turno_${fecha}.xlsx`;
       
-      // Usar cacheDirectory en lugar de documentDirectory
       const fileUri = FileSystem.cacheDirectory + fileName;
 
       await FileSystem.writeAsStringAsync(fileUri, wbout, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Compartir archivo
-      if (await Sharing.isAvailableAsync()) {
+      const canShare = await Sharing.isAvailableAsync();
+      
+      if (canShare) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           dialogTitle: 'Exportar Cierre de Turno',
           UTI: 'com.microsoft.excel.xlsx',
         });
 
-        Alert.alert('Éxito', 'Excel exportado correctamente');
+        // NUEVO: Actualizar el stock de apertura para el próximo día
+        const productos = await getProductos();
+        for (const producto of productos) {
+          await updateProducto(producto.id, {
+            stockApertura: producto.stock, // El stock actual se convierte en el de apertura
+          });
+        }
+
+        Alert.alert('Éxito', 'Excel exportado correctamente. El inventario final se guardó como apertura del próximo día.');
         onClose();
       } else {
         Alert.alert('Error', 'No se puede compartir archivos en este dispositivo');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error al exportar Excel:', error);
-      Alert.alert('Error', 'Hubo un problema al exportar el archivo');
+      Alert.alert('Error', `Hubo un problema: ${error.message || 'Desconocido'}`);
     } finally {
       setLoading(false);
     }
