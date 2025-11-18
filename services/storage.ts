@@ -1,4 +1,4 @@
-import { Movimiento, Producto, Venta } from '@/types';
+import { EstadoTurno, Movimiento, Producto, Venta } from '@/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEYS = {
@@ -79,4 +79,24 @@ export const addVenta = async (venta: Venta): Promise<void> => {
   const ventas = await getVentas();
   ventas.push(venta);
   await AsyncStorage.setItem(KEYS.VENTAS, JSON.stringify(ventas));
+};
+const TURNO_KEY = '@floreria_turno';
+
+// Estado del turno
+export const getEstadoTurno = async (): Promise<EstadoTurno> => {
+  try {
+    const data = await AsyncStorage.getItem(TURNO_KEY);
+    return data ? JSON.parse(data) : { turnoAbierto: false };
+  } catch (error) {
+    console.error('Error al obtener estado del turno:', error);
+    return { turnoAbierto: false };
+  }
+};
+
+export const setEstadoTurno = async (estado: EstadoTurno): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(TURNO_KEY, JSON.stringify(estado));
+  } catch (error) {
+    console.error('Error al guardar estado del turno:', error);
+  }
 };

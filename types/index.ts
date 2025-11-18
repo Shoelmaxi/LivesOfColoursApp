@@ -40,3 +40,10 @@ export interface Venta {
   esUber?: boolean;
   notas?: string;
 }
+
+// NUEVO - Agrega esto al final
+export interface EstadoTurno {
+  turnoAbierto: boolean;
+  fechaApertura?: Date;
+  fechaCierre?: Date;
+}
