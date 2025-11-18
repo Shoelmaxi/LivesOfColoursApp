@@ -81,6 +81,21 @@ export default function VentasScreen() {
     });
   };
 
+  const getMetodoPagoIcon = (metodo?: string) => {
+    if (!metodo) return '💵';
+    switch (metodo) {
+      case 'efectivo': return '💵';
+      case 'transferencia': return '📱';
+      case 'debito': return '💳';
+      default: return '💵';
+    }
+  };
+
+  const getMetodoPagoText = (metodo?: string) => {
+    if (!metodo) return 'Efectivo';
+    return metodo.charAt(0).toUpperCase() + metodo.slice(1);
+  };
+
   const totalDelDia = getTotalDelDia();
   const ventasDelDia = getVentasDelDia();
 
@@ -151,6 +166,15 @@ export default function VentasScreen() {
                     </ThemedText>
                   )}
                 </View>
+
+                {/* Método de pago */}
+                {!venta.esUber && venta.metodoPago && (
+                  <View style={styles.metodoPagoContainer}>
+                    <ThemedText style={styles.metodoPagoText}>
+                      {getMetodoPagoIcon(venta.metodoPago)} {getMetodoPagoText(venta.metodoPago)}
+                    </ThemedText>
+                  </View>
+                )}
 
                 {/* Productos vendidos */}
                 <View style={styles.productosContainer}>
@@ -283,6 +307,17 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#51cf66',
+  },
+  metodoPagoContainer: {
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  metodoPagoText: {
+    fontSize: 14,
+    opacity: 0.7,
+    fontWeight: '600',
   },
   productosContainer: {
     marginBottom: 8,

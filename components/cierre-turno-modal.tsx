@@ -103,29 +103,31 @@ export function CierreTurnoModal({ visible, onClose }: CierreTurnoModalProps) {
     });
 
     const datosVentas = ventasHoy.map(venta => {
-  const fecha = new Date(venta.fecha);
-  const hora = fecha.toLocaleTimeString('es-CL', { 
-    hour: '2-digit', 
-    minute: '2-digit',
-    hour12: false 
-  });
+      const fecha = new Date(venta.fecha);
+      const hora = fecha.toLocaleTimeString('es-CL', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+      });
 
-  const productosTexto = venta.productos
-    .map(p => `${p.productoNombre} (x${p.cantidad})`)
-    .join(', ');
+      const productosTexto = venta.productos
+        .map(p => `${p.productoNombre} (x${p.cantidad})`)
+        .join(', ');
 
-  const metodoPagoTexto = venta.esUber 
-    ? 'UBER' 
-    : (venta.metodoPago ? venta.metodoPago.toUpperCase() : 'NO ESPECIFICADO');
+      const metodoPagoTexto = venta.esUber 
+        ? 'UBER' 
+        : (venta.metodoPago 
+          ? venta.metodoPago.charAt(0).toUpperCase() + venta.metodoPago.slice(1)
+          : 'Efectivo');
 
-  return {
-    'Productos': productosTexto,
-    'Precio': venta.esUber ? 'UBER' : `$${venta.total}`,
-    'Método de Pago': metodoPagoTexto,
-    'Hora': hora,
-    'Notas': venta.notas || '',
-  };
-});
+      return {
+        'Hora': hora,
+        'Productos': productosTexto,
+        'Precio': venta.esUber ? 'UBER' : `$${venta.total}`,
+        'Método de Pago': metodoPagoTexto,
+        'Notas': venta.notas || '',
+      };
+    });
 
     return datosVentas;
   };
@@ -182,11 +184,11 @@ export function CierreTurnoModal({ visible, onClose }: CierreTurnoModalProps) {
           UTI: 'com.microsoft.excel.xlsx',
         });
 
-        // NUEVO: Actualizar el stock de apertura para el próximo día
+        // Actualizar el stock de apertura para el próximo día
         const productos = await getProductos();
         for (const producto of productos) {
           await updateProducto(producto.id, {
-            stockApertura: producto.stock, // El stock actual se convierte en el de apertura
+            stockApertura: producto.stock,
           });
         }
 
@@ -245,7 +247,7 @@ export function CierreTurnoModal({ visible, onClose }: CierreTurnoModalProps) {
             </ThemedText>
             <ThemedText style={styles.infoItem}>
               • <ThemedText type="defaultSemiBold">Ventas:</ThemedText> Detalle de todas
-              las ventas del día
+              las ventas del día con método de pago
             </ThemedText>
           </View>
 
