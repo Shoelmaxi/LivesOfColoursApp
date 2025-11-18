@@ -49,10 +49,10 @@ export function ResetInventoryModal({ visible, onClose, onSuccess }: ResetInvent
     });
   };
 
-  const resetearInventario = async () => {
+ const resetearInventario = async () => {
     Alert.alert(
       'Confirmar Reset',
-      '¿Estás seguro de que deseas actualizar todo el inventario? Esta acción no se puede deshacer.',
+      '¿Estás seguro de que deseas actualizar todo el inventario? Esta acción guardará estos valores como stock de apertura del día.',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -63,7 +63,10 @@ export function ResetInventoryModal({ visible, onClose, onSuccess }: ResetInvent
               // Actualizar todos los productos
               for (const producto of productos) {
                 const nuevoStock = parseInt(nuevosStocks[producto.id]) || 0;
-                await updateProducto(producto.id, { stock: nuevoStock });
+                await updateProducto(producto.id, { 
+                  stock: nuevoStock,
+                  stockApertura: nuevoStock, // Guardar como stock de apertura
+                });
               }
 
               Alert.alert('Éxito', 'Inventario actualizado correctamente');

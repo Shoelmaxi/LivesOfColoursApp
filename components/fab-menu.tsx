@@ -1,6 +1,6 @@
 import { ThemedText } from '@/components/themed-text';
-import { useState } from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Animated, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 interface FabMenuItem {
   label: string;
@@ -15,14 +15,37 @@ interface FabMenuProps {
 
 export function FabMenu({ items }: FabMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const toggleMenu = () => {
+    const toValue = isOpen ? 0 : 1;
+    
+    Animated.parallel([
+      Animated.spring(rotateAnim, {
+        toValue,
+        useNativeDriver: true,
+        tension: 50,
+        friction: 7,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
     setIsOpen(!isOpen);
   };
 
+  const rotation = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '45deg'],
+  });
+
   return (
     <View style={styles.container}>
-      {/* Overlay oscuro cuando está abierto */}
+      {/* Overlay oscuro */}
       {isOpen && (
         <TouchableOpacity
           style={styles.overlay}
@@ -33,35 +56,52 @@ export function FabMenu({ items }: FabMenuProps) {
 
       {/* Botones del menú */}
       {isOpen &&
-        items.map((item, index) => (
-          <View
-            key={index}
-            style={[
-              styles.menuItem,
-              { bottom: 80 + index * 70 },
-            ]}>
-            <View style={styles.menuItemContent}>
-              <View style={styles.labelContainer}>
-                <ThemedText style={styles.label}>{item.label}</ThemedText>
+        items.map((item, index) => {
+          const itemAnim = fadeAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 1],
+          });
+
+          const translateY = fadeAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [20, -(90 + index * 80)],
+          });
+
+          return (
+            <Animated.View
+              key={index}
+              style={[
+                styles.menuItem,
+                {
+                  opacity: itemAnim,
+                  transform: [{ translateY }],
+                },
+              ]}>
+              <View style={styles.menuItemContent}>
+                <View style={styles.labelContainer}>
+                  <ThemedText style={styles.label}>{item.label}</ThemedText>
+                </View>
+                <TouchableOpacity
+                  style={[styles.menuButton, { backgroundColor: item.color }]}
+                  onPress={() => {
+                    item.onPress();
+                    toggleMenu();
+                  }}>
+                  <ThemedText style={styles.menuIcon}>{item.icon}</ThemedText>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={[styles.menuButton, { backgroundColor: item.color }]}
-                onPress={() => {
-                  item.onPress();
-                  setIsOpen(false);
-                }}>
-                <ThemedText style={styles.menuIcon}>{item.icon}</ThemedText>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
+            </Animated.View>
+          );
+        })}
 
       {/* Botón principal */}
-      <TouchableOpacity
-        style={[styles.fab, isOpen && styles.fabOpen]}
-        onPress={toggleMenu}>
-        <ThemedText style={styles.fabText}>{isOpen ? '✕' : '+'}</ThemedText>
-      </TouchableOpacity>
+      <Animated.View style={{ transform: [{ rotate: rotation }] }}>
+        <TouchableOpacity
+          style={[styles.fab, isOpen && styles.fabOpen]}
+          onPress={toggleMenu}>
+          <ThemedText style={styles.fabText}>+</ThemedText>
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 }
@@ -71,6 +111,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 20,
     bottom: 20,
+    zIndex: 1000,
   },
   overlay: {
     position: 'absolute',
@@ -79,6 +120,7 @@ const styles = StyleSheet.create({
     right: -1000,
     bottom: -1000,
     backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 1,
   },
   fab: {
     width: 60,
@@ -92,6 +134,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 8,
+    zIndex: 3,
   },
   fabOpen: {
     backgroundColor: '#ff6b6b',
@@ -104,7 +147,9 @@ const styles = StyleSheet.create({
   menuItem: {
     position: 'absolute',
     right: 0,
+    bottom: 0,
     alignItems: 'flex-end',
+    zIndex: 2,
   },
   menuItemContent: {
     flexDirection: 'row',
@@ -114,18 +159,20 @@ const styles = StyleSheet.create({
   labelContainer: {
     backgroundColor: '#fff',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 4,
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    minWidth: 140,
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
     color: '#000',
+    textAlign: 'center',
   },
   menuButton: {
     width: 50,
@@ -135,8 +182,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
     elevation: 5,
   },
   menuIcon: {

@@ -1,12 +1,15 @@
 import { AddProductModal } from '@/components/add-product-modal';
+import { CierreTurnoModal } from '@/components/cierre-turno-modal';
 import { DailyTotalHeader } from '@/components/daily-total-header';
+import { EditProductModal } from '@/components/edit-product-modal';
 import { FabMenu } from '@/components/fab-menu';
 import { ResetInventoryModal } from '@/components/reset-inventory-modal';
 import { SalesModal } from '@/components/sales-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { UberSalesModal } from '@/components/uber-sales-modal';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { addMovimiento, addProducto, getProductos, updateProducto } from '@/services/storage';
+import { addMovimiento, addProducto, deleteProducto, getProductos, updateProducto } from '@/services/storage';
 import { Categoria, Movimiento, Producto } from '@/types';
 import { useEffect, useState } from 'react';
 import {
@@ -24,13 +27,16 @@ export default function InventoryScreen() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [filtroCategoria, setFiltroCategoria] = useState<Categoria | 'todas'>('todas');
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalTipo, setModalTipo] = useState<'merma' | 'abastecimiento'>('merma');
+  const [modalTipo, setModalTipo] = useState<'merma' | 'abastecimiento' | 'ocupado_ramo'>('merma');
   const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
   const [cantidad, setCantidad] = useState('');
   const [notas, setNotas] = useState('');
   const [addModalVisible, setAddModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
   const [salesModalVisible, setSalesModalVisible] = useState(false);
+  const [uberSalesModalVisible, setUberSalesModalVisible] = useState(false);
   const [resetModalVisible, setResetModalVisible] = useState(false);
+  const [cierreModalVisible, setCierreModalVisible] = useState(false);
   const colorScheme = useColorScheme();
 
   useEffect(() => {
@@ -46,12 +52,17 @@ export default function InventoryScreen() {
     filtroCategoria === 'todas' ? true : p.categoria === filtroCategoria
   );
 
-  const abrirModal = (producto: Producto, tipo: 'merma' | 'abastecimiento') => {
+  const abrirModal = (producto: Producto, tipo: 'merma' | 'abastecimiento' | 'ocupado_ramo') => {
     setProductoSeleccionado(producto);
     setModalTipo(tipo);
     setCantidad('');
     setNotas('');
     setModalVisible(true);
+  };
+
+  const abrirEditarModal = (producto: Producto) => {
+    setProductoSeleccionado(producto);
+    setEditModalVisible(true);
   };
 
   const guardarMovimiento = async () => {
@@ -62,15 +73,15 @@ export default function InventoryScreen() {
 
     const cantidadNum = parseInt(cantidad);
     
-    if (modalTipo === 'merma' && cantidadNum > productoSeleccionado.stock) {
-      Alert.alert('Error', 'No puedes registrar más merma que el stock disponible');
+    if ((modalTipo === 'merma' || modalTipo === 'ocupado_ramo') && cantidadNum > productoSeleccionado.stock) {
+      Alert.alert('Error', `No puedes registrar más ${modalTipo === 'merma' ? 'merma' : 'flores usadas'} que el stock disponible`);
       return;
     }
 
     // Actualizar stock
-    const nuevoStock = modalTipo === 'merma' 
-      ? productoSeleccionado.stock - cantidadNum
-      : productoSeleccionado.stock + cantidadNum;
+    const nuevoStock = modalTipo === 'abastecimiento'
+      ? productoSeleccionado.stock + cantidadNum
+      : productoSeleccionado.stock - cantidadNum;
 
     await updateProducto(productoSeleccionado.id, { stock: nuevoStock });
 
@@ -89,16 +100,44 @@ export default function InventoryScreen() {
     await loadProductos();
     setModalVisible(false);
 
-    Alert.alert(
-      'Éxito',
-      `${modalTipo === 'merma' ? 'Merma' : 'Abastecimiento'} registrado correctamente`
-    );
+    const mensajes = {
+      merma: 'Merma',
+      abastecimiento: 'Abastecimiento',
+      ocupado_ramo: 'Flores usadas en ramo',
+    };
+
+    Alert.alert('Éxito', `${mensajes[modalTipo]} registrado correctamente`);
   };
 
   const handleSaveNewProduct = async (producto: Producto) => {
     await addProducto(producto);
     await loadProductos();
     Alert.alert('Éxito', 'Producto agregado correctamente');
+  };
+
+  const handleUpdateProduct = async (producto: Producto) => {
+    await updateProducto(producto.id, producto);
+    await loadProductos();
+    Alert.alert('Éxito', 'Producto actualizado correctamente');
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    await deleteProducto(id);
+    await loadProductos();
+    Alert.alert('Éxito', 'Producto eliminado correctamente');
+  };
+
+  const getTituloModal = () => {
+    switch (modalTipo) {
+      case 'merma':
+        return '🗑️ Registrar Merma';
+      case 'abastecimiento':
+        return '📦 Abastecimiento';
+      case 'ocupado_ramo':
+        return '💐 Flores Usadas en Ramo';
+      default:
+        return '';
+    }
   };
 
   return (
@@ -162,7 +201,10 @@ export default function InventoryScreen() {
                 styles.card,
                 { backgroundColor: colorScheme === 'dark' ? '#2c2c2c' : '#ffffff' }
               ]}>
-              <View style={styles.cardHeader}>
+              <TouchableOpacity 
+                style={styles.cardHeader}
+                onLongPress={() => abrirEditarModal(producto)}
+                activeOpacity={0.7}>
                 {producto.foto ? (
                   <Image source={{ uri: producto.foto }} style={styles.productImage} />
                 ) : (
@@ -174,7 +216,14 @@ export default function InventoryScreen() {
                   </View>
                 )}
                 <View style={styles.cardInfo}>
-                  <ThemedText type="defaultSemiBold">{producto.nombre}</ThemedText>
+                  <View style={styles.cardTitleRow}>
+                    <ThemedText type="defaultSemiBold">{producto.nombre}</ThemedText>
+                    <TouchableOpacity 
+                      onPress={() => abrirEditarModal(producto)}
+                      style={styles.editIcon}>
+                      <ThemedText style={styles.editIconText}>✏️</ThemedText>
+                    </TouchableOpacity>
+                  </View>
                   <ThemedText style={styles.stockText}>
                     Stock: {producto.stock} {producto.unidad}
                   </ThemedText>
@@ -182,13 +231,20 @@ export default function InventoryScreen() {
                     <ThemedText style={styles.warningText}>⚠️ Stock bajo</ThemedText>
                   )}
                 </View>
-              </View>
+              </TouchableOpacity>
               <View style={styles.cardActions}>
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.mermaBtn]}
                   onPress={() => abrirModal(producto, 'merma')}>
                   <ThemedText style={styles.actionBtnText}>➖ Merma</ThemedText>
                 </TouchableOpacity>
+                {producto.categoria === 'flores_sueltas' && (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.ramoBtn]}
+                    onPress={() => abrirModal(producto, 'ocupado_ramo')}>
+                    <ThemedText style={styles.actionBtnText}>💐 Ramo</ThemedText>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.abastBtn]}
                   onPress={() => abrirModal(producto, 'abastecimiento')}>
@@ -219,13 +275,19 @@ export default function InventoryScreen() {
             label: 'Venta Uber',
             icon: '🚗',
             color: '#ffa94d',
-            onPress: () => Alert.alert('Próximamente', 'Funcionalidad de Venta Uber en desarrollo'),
+            onPress: () => setUberSalesModalVisible(true),
           },
           {
             label: 'Reset Inventario',
             icon: '🔄',
             color: '#ff6b6b',
             onPress: () => setResetModalVisible(true),
+          },
+          {
+            label: 'Cierre de Turno',
+            icon: '📊',
+            color: '#9775fa',
+            onPress: () => setCierreModalVisible(true),
           },
         ]}
       />
@@ -237,10 +299,29 @@ export default function InventoryScreen() {
         onSave={handleSaveNewProduct}
       />
 
+      {/* Modal de editar producto */}
+      <EditProductModal
+        visible={editModalVisible}
+        producto={productoSeleccionado}
+        onClose={() => {
+          setEditModalVisible(false);
+          setProductoSeleccionado(null);
+        }}
+        onSave={handleUpdateProduct}
+        onDelete={handleDeleteProduct}
+      />
+
       {/* Modal de ventas */}
       <SalesModal
         visible={salesModalVisible}
         onClose={() => setSalesModalVisible(false)}
+        onSuccess={loadProductos}
+      />
+
+      {/* Modal de ventas Uber */}
+      <UberSalesModal
+        visible={uberSalesModalVisible}
+        onClose={() => setUberSalesModalVisible(false)}
         onSuccess={loadProductos}
       />
 
@@ -251,7 +332,13 @@ export default function InventoryScreen() {
         onSuccess={loadProductos}
       />
 
-      {/* Modal de merma/abastecimiento */}
+      {/* Modal de cierre de turno */}
+      <CierreTurnoModal
+        visible={cierreModalVisible}
+        onClose={() => setCierreModalVisible(false)}
+      />
+
+      {/* Modal de merma/abastecimiento/ramo */}
       <Modal
         visible={modalVisible}
         transparent
@@ -263,7 +350,7 @@ export default function InventoryScreen() {
             { backgroundColor: colorScheme === 'dark' ? '#2c2c2c' : '#fff' }
           ]}>
             <ThemedText type="subtitle" style={styles.modalTitle}>
-              {modalTipo === 'merma' ? '🗑️ Registrar Merma' : '📦 Abastecimiento'}
+              {getTituloModal()}
             </ThemedText>
             
             <ThemedText style={styles.modalProductName}>
@@ -289,9 +376,7 @@ export default function InventoryScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <ThemedText>
-                {modalTipo === 'merma' ? 'Motivo:' : 'Notas:'}
-              </ThemedText>
+              <ThemedText>Notas:</ThemedText>
               <TextInput
                 style={[
                   styles.input,
@@ -396,6 +481,17 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
+  cardTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  editIcon: {
+    padding: 4,
+  },
+  editIconText: {
+    fontSize: 18,
+  },
   stockText: {
     fontSize: 14,
     opacity: 0.7,
@@ -419,33 +515,16 @@ const styles = StyleSheet.create({
   mermaBtn: {
     backgroundColor: '#ff6b6b',
   },
+  ramoBtn: {
+    backgroundColor: '#9775fa',
+  },
   abastBtn: {
     backgroundColor: '#51cf66',
   },
   actionBtnText: {
     color: '#fff',
     fontWeight: '600',
-  },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#0a7ea4',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 8,
-  },
-  fabText: {
-    fontSize: 32,
-    color: '#fff',
-    fontWeight: '300',
+    fontSize: 13,
   },
   modalOverlay: {
     flex: 1,

@@ -6,12 +6,13 @@ export interface Producto {
   categoria: Categoria;
   stock: number;
   stockMinimo: number;
+  stockApertura?: number; // Stock inicial del día (reset inventario)
   unidad: string;
   foto?: string;
   fechaCreacion: Date;
 }
 
-export type TipoMovimiento = 'merma' | 'abastecimiento';
+export type TipoMovimiento = 'merma' | 'abastecimiento' | 'ocupado_ramo';
 
 export interface Movimiento {
   id: string;

@@ -1,3 +1,4 @@
+
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { addVenta, getProductos, updateProducto } from '@/services/storage';
