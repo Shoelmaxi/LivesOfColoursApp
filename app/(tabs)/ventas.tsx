@@ -131,16 +131,25 @@ export default function VentasScreen() {
                 {/* Header de la venta */}
                 <View style={styles.ventaHeader}>
                   <View style={styles.ventaHeaderLeft}>
-                    <ThemedText type="defaultSemiBold" style={styles.ventaFecha}>
-                      {esHoy ? '🟢 Hoy' : formatFecha(fechaVenta)}
-                    </ThemedText>
+                    <View style={styles.ventaFechaContainer}>
+                      <ThemedText type="defaultSemiBold" style={styles.ventaFecha}>
+                        {esHoy ? '🟢 Hoy' : formatFecha(fechaVenta)}
+                      </ThemedText>
+                      {venta.esUber && (
+                        <View style={styles.uberBadge}>
+                          <ThemedText style={styles.uberBadgeText}>UBER</ThemedText>
+                        </View>
+                      )}
+                    </View>
                     <ThemedText style={styles.ventaHora}>
                       {formatHora(fechaVenta)}
                     </ThemedText>
                   </View>
-                  <ThemedText style={styles.ventaTotal}>
-                    ${venta.total.toLocaleString('es-CL')}
-                  </ThemedText>
+                  {!venta.esUber && (
+                    <ThemedText style={styles.ventaTotal}>
+                      ${venta.total.toLocaleString('es-CL')}
+                    </ThemedText>
+                  )}
                 </View>
 
                 {/* Productos vendidos */}
@@ -179,27 +188,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   totalContainer: {
-    padding: 20,
+    padding: 24,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowRadius: 6,
+    elevation: 6,
   },
   totalLabel: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#fff',
     opacity: 0.9,
-    marginBottom: 6,
+    marginBottom: 8,
   },
   totalAmount: {
-    fontSize: 32,
+    fontSize: 42,
     fontWeight: 'bold',
     color: '#fff',
   },
   totalSubtext: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#fff',
     opacity: 0.8,
     marginTop: 4,
@@ -246,9 +255,25 @@ const styles = StyleSheet.create({
   ventaHeaderLeft: {
     flex: 1,
   },
+  ventaFechaContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   ventaFecha: {
     fontSize: 16,
-    marginBottom: 4,
+  },
+  uberBadge: {
+    backgroundColor: '#ffa94d',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  uberBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   ventaHora: {
     fontSize: 14,

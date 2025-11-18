@@ -4,14 +4,14 @@ import { Categoria, Producto } from '@/types';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import {
-    Alert,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 interface AddProductModalProps {
@@ -230,7 +230,7 @@ export function AddProductModal({ visible, onClose, onSave }: AddProductModalPro
           <View style={styles.section}>
             <ThemedText type="defaultSemiBold">Unidad *</ThemedText>
             <View style={styles.unitButtons}>
-              {['piezas', 'ramos', 'docenas'].map((u) => (
+              {['unidad', 'ramos'].map((u) => (
                 <TouchableOpacity
                   key={u}
                   style={[

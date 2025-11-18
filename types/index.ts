@@ -1,4 +1,5 @@
 export type Categoria = 'ramos' | 'flores_sueltas';
+export type MetodoPago = 'efectivo' | 'transferencia' | 'debito';
 
 export interface Producto {
   id: string;
@@ -6,7 +7,7 @@ export interface Producto {
   categoria: Categoria;
   stock: number;
   stockMinimo: number;
-  stockApertura?: number; // Stock inicial del día (reset inventario)
+  stockApertura?: number;
   unidad: string;
   foto?: string;
   fechaCreacion: Date;
@@ -35,6 +36,7 @@ export interface Venta {
   fecha: Date;
   productos: ProductoVenta[];
   total: number;
-  esUber?: boolean; // Flag para identificar ventas de Uber
+  metodoPago?: MetodoPago;
+  esUber?: boolean;
   notas?: string;
 }

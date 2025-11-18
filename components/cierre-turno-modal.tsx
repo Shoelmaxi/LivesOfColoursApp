@@ -103,24 +103,29 @@ export function CierreTurnoModal({ visible, onClose }: CierreTurnoModalProps) {
     });
 
     const datosVentas = ventasHoy.map(venta => {
-      const fecha = new Date(venta.fecha);
-      const hora = fecha.toLocaleTimeString('es-CL', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: false 
-      });
+  const fecha = new Date(venta.fecha);
+  const hora = fecha.toLocaleTimeString('es-CL', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    hour12: false 
+  });
 
-      const productosTexto = venta.productos
-        .map(p => `${p.productoNombre} (x${p.cantidad})`)
-        .join(', ');
+  const productosTexto = venta.productos
+    .map(p => `${p.productoNombre} (x${p.cantidad})`)
+    .join(', ');
 
-      return {
-        'Productos': productosTexto,
-        'Precio': venta.esUber ? 'UBER' : `$${venta.total}`,
-        'Hora': hora,
-        'Notas': venta.notas || '',
-      };
-    });
+  const metodoPagoTexto = venta.esUber 
+    ? 'UBER' 
+    : (venta.metodoPago ? venta.metodoPago.toUpperCase() : 'NO ESPECIFICADO');
+
+  return {
+    'Productos': productosTexto,
+    'Precio': venta.esUber ? 'UBER' : `$${venta.total}`,
+    'Método de Pago': metodoPagoTexto,
+    'Hora': hora,
+    'Notas': venta.notas || '',
+  };
+});
 
     return datosVentas;
   };

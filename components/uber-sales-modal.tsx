@@ -1,17 +1,16 @@
-
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { addVenta, getProductos, updateProducto } from '@/services/storage';
 import { Producto, ProductoVenta, Venta } from '@/types';
 import { useEffect, useState } from 'react';
 import {
-    Alert,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 interface UberSalesModalProps {
