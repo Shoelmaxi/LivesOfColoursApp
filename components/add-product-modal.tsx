@@ -1,5 +1,6 @@
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { generarId } from '@/services/storage';
 import { Categoria, Producto } from '@/types';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
@@ -79,12 +80,15 @@ export function AddProductModal({ visible, onClose, onSave }: AddProductModalPro
       return;
     }
 
+    const stockNum = parseInt(stock);
+    
     const nuevoProducto: Producto = {
-      id: Date.now().toString(),
+      id: generarId(),
       nombre: nombre.trim(),
       categoria,
-      stock: parseInt(stock),
+      stock: stockNum,
       stockMinimo: parseInt(stockMinimo),
+      stockApertura: stockNum, // Guardar el stock inicial como apertura
       unidad,
       foto,
       fechaCreacion: new Date(),
@@ -230,7 +234,7 @@ export function AddProductModal({ visible, onClose, onSave }: AddProductModalPro
           <View style={styles.section}>
             <ThemedText type="defaultSemiBold">Unidad *</ThemedText>
             <View style={styles.unitButtons}>
-              {['unidad', 'ramos'].map((u) => (
+              {['piezas', 'ramos', 'docenas'].map((u) => (
                 <TouchableOpacity
                   key={u}
                   style={[

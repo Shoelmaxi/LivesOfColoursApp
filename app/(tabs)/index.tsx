@@ -1,17 +1,17 @@
 import { AddProductModal } from '@/components/add-product-modal';
-import { CierreTurnoModal } from '@/components/cierre-turno-modal';
 import { DailyTotalHeader } from '@/components/daily-total-header';
 import { EditProductModal } from '@/components/edit-product-modal';
 import { FabMenu } from '@/components/fab-menu';
-import { ResetInventoryModal } from '@/components/reset-inventory-modal';
 import { SalesModal } from '@/components/sales-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { TurnoModal } from '@/components/turno-modal'; // ← NUEVO MODAL
 import { UberSalesModal } from '@/components/uber-sales-modal';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { addMovimiento, addProducto, deleteProducto, getProductos, updateProducto } from '@/services/storage';
+import { addMovimiento, addProducto, deleteProducto, generarId, getEstadoTurno, getProductos, updateProducto } from '@/services/storage';
 import { Categoria, Movimiento, Producto } from '@/types';
-import { useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -35,17 +35,39 @@ export default function InventoryScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [salesModalVisible, setSalesModalVisible] = useState(false);
   const [uberSalesModalVisible, setUberSalesModalVisible] = useState(false);
-  const [resetModalVisible, setResetModalVisible] = useState(false);
-  const [cierreModalVisible, setCierreModalVisible] = useState(false);
+  const [turnoModalVisible, setTurnoModalVisible] = useState(false);
+  const [turnoAbierto, setTurnoAbierto] = useState(false);
   const colorScheme = useColorScheme();
 
   useEffect(() => {
     loadProductos();
+    loadEstadoTurno();
   }, []);
 
+  // Recargar estado del turno cada vez que la pantalla se enfoca
+  useFocusEffect(
+    useCallback(() => {
+      loadEstadoTurno();
+    }, [])
+  );
+
   const loadProductos = async () => {
-    const data = await getProductos();
-    setProductos(data);
+    try {
+      const data = await getProductos();
+      setProductos(data);
+    } catch (error) {
+      console.error('Error al cargar productos:', error);
+      Alert.alert('Error', 'No se pudieron cargar los productos');
+    }
+  };
+
+  const loadEstadoTurno = async () => {
+    try {
+      const estado = await getEstadoTurno();
+      setTurnoAbierto(estado.turnoAbierto);
+    } catch (error) {
+      console.error('Error al cargar estado del turno:', error);
+    }
   };
 
   const productosFiltrados = productos.filter(p => 
@@ -78,53 +100,79 @@ export default function InventoryScreen() {
       return;
     }
 
-    // Actualizar stock
-    const nuevoStock = modalTipo === 'abastecimiento'
-      ? productoSeleccionado.stock + cantidadNum
-      : productoSeleccionado.stock - cantidadNum;
+    try {
+      // Actualizar stock
+      const nuevoStock = modalTipo === 'abastecimiento'
+        ? productoSeleccionado.stock + cantidadNum
+        : productoSeleccionado.stock - cantidadNum;
 
-    await updateProducto(productoSeleccionado.id, { stock: nuevoStock });
+      await updateProducto(productoSeleccionado.id, { stock: nuevoStock });
 
-    // Registrar movimiento
-    const movimiento: Movimiento = {
-      id: Date.now().toString(),
-      tipo: modalTipo,
-      productoId: productoSeleccionado.id,
-      productoNombre: productoSeleccionado.nombre,
-      cantidad: cantidadNum,
-      fecha: new Date(),
-      notas: notas || undefined,
-    };
+      // Registrar movimiento
+      const movimiento: Movimiento = {
+        id: generarId(),
+        tipo: modalTipo,
+        productoId: productoSeleccionado.id,
+        productoNombre: productoSeleccionado.nombre,
+        cantidad: cantidadNum,
+        fecha: new Date(),
+        notas: notas || undefined,
+      };
 
-    await addMovimiento(movimiento);
-    await loadProductos();
-    setModalVisible(false);
+      await addMovimiento(movimiento);
+      await loadProductos();
+      setModalVisible(false);
 
-    const mensajes = {
-      merma: 'Merma',
-      abastecimiento: 'Abastecimiento',
-      ocupado_ramo: 'Flores usadas en ramo',
-    };
+      const mensajes = {
+        merma: 'Merma',
+        abastecimiento: 'Abastecimiento',
+        ocupado_ramo: 'Flores usadas en ramo',
+      };
 
-    Alert.alert('Éxito', `${mensajes[modalTipo]} registrado correctamente`);
+      Alert.alert('Éxito', `${mensajes[modalTipo]} registrado correctamente`);
+    } catch (error) {
+      console.error('Error al guardar movimiento:', error);
+      Alert.alert('Error', 'Hubo un problema al registrar el movimiento. Por favor intenta nuevamente.');
+    }
   };
 
   const handleSaveNewProduct = async (producto: Producto) => {
-    await addProducto(producto);
-    await loadProductos();
-    Alert.alert('Éxito', 'Producto agregado correctamente');
+    try {
+      await addProducto(producto);
+      await loadProductos();
+      Alert.alert('Éxito', 'Producto agregado correctamente');
+    } catch (error) {
+      console.error('Error al agregar producto:', error);
+      Alert.alert('Error', 'No se pudo agregar el producto');
+    }
   };
 
   const handleUpdateProduct = async (producto: Producto) => {
-    await updateProducto(producto.id, producto);
-    await loadProductos();
-    Alert.alert('Éxito', 'Producto actualizado correctamente');
+    try {
+      await updateProducto(producto.id, producto);
+      await loadProductos();
+      Alert.alert('Éxito', 'Producto actualizado correctamente');
+    } catch (error) {
+      console.error('Error al actualizar producto:', error);
+      Alert.alert('Error', 'No se pudo actualizar el producto');
+    }
   };
 
   const handleDeleteProduct = async (id: string) => {
-    await deleteProducto(id);
+    try {
+      await deleteProducto(id);
+      await loadProductos();
+      Alert.alert('Éxito', 'Producto eliminado correctamente');
+    } catch (error) {
+      console.error('Error al eliminar producto:', error);
+      Alert.alert('Error', 'No se pudo eliminar el producto');
+    }
+  };
+
+  const handleTurnoSuccess = async () => {
+    // Recargar productos y estado del turno
     await loadProductos();
-    Alert.alert('Éxito', 'Producto eliminado correctamente');
+    await loadEstadoTurno();
   };
 
   const getTituloModal = () => {
@@ -278,16 +326,10 @@ export default function InventoryScreen() {
             onPress: () => setUberSalesModalVisible(true),
           },
           {
-            label: 'Reset Inventario',
-            icon: '🔄',
-            color: '#ff6b6b',
-            onPress: () => setResetModalVisible(true),
-          },
-          {
-            label: 'Cierre de Turno',
-            icon: '📊',
-            color: '#9775fa',
-            onPress: () => setCierreModalVisible(true),
+            label: turnoAbierto ? 'Cerrar Turno' : 'Iniciar Turno',
+            icon: turnoAbierto ? '🌙' : '🌅',
+            color: turnoAbierto ? '#f97316' : '#10b981',
+            onPress: () => setTurnoModalVisible(true),
           },
         ]}
       />
@@ -325,17 +367,11 @@ export default function InventoryScreen() {
         onSuccess={loadProductos}
       />
 
-      {/* Modal de reset inventario */}
-      <ResetInventoryModal
-        visible={resetModalVisible}
-        onClose={() => setResetModalVisible(false)}
-        onSuccess={loadProductos}
-      />
-
-      {/* Modal de cierre de turno */}
-      <CierreTurnoModal
-        visible={cierreModalVisible}
-        onClose={() => setCierreModalVisible(false)}
+      {/* Modal de turno (dinámico: inicio o cierre) */}
+      <TurnoModal
+        visible={turnoModalVisible}
+        onClose={() => setTurnoModalVisible(false)}
+        onSuccess={handleTurnoSuccess}
       />
 
       {/* Modal de merma/abastecimiento/ramo */}

@@ -1,23 +1,33 @@
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { getEstadoTurno, getProductos, setEstadoTurno, updateProducto } from '@/services/storage';
+import {
+  getEstadoTurno,
+  getMovimientos,
+  getProductos,
+  getVentas,
+  setEstadoTurno,
+  updateProducto
+} from '@/services/storage';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    StyleSheet,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Modal,
+  StyleSheet,
+  TouchableOpacity,
+  View
 } from 'react-native';
+import * as XLSX from 'xlsx';
 
 interface TurnoModalProps {
   visible: boolean;
   onClose: () => void;
-  onTurnoChanged: () => void;
+  onSuccess?: () => void;
 }
 
-export function TurnoModal({ visible, onClose, onTurnoChanged }: TurnoModalProps) {
+export function TurnoModal({ visible, onClose, onSuccess }: TurnoModalProps) {
   const [loading, setLoading] = useState(false);
   const [turnoAbierto, setTurnoAbierto] = useState(false);
   const colorScheme = useColorScheme();
@@ -29,15 +39,24 @@ export function TurnoModal({ visible, onClose, onTurnoChanged }: TurnoModalProps
   }, [visible]);
 
   const cargarEstadoTurno = async () => {
-    const estado = await getEstadoTurno();
-    setTurnoAbierto(estado.turnoAbierto);
+    try {
+      const estado = await getEstadoTurno();
+      setTurnoAbierto(estado.turnoAbierto);
+    } catch (error) {
+      console.error('Error al cargar estado del turno:', error);
+    }
   };
 
   const iniciarTurno = async () => {
     setLoading(true);
     try {
-      // Obtener todos los productos
       const productos = await getProductos();
+
+      if (productos.length === 0) {
+        Alert.alert('Sin productos', 'Agrega productos antes de iniciar un turno');
+        setLoading(false);
+        return;
+      }
 
       // Guardar el stock actual como stock de apertura
       for (const producto of productos) {
@@ -59,7 +78,7 @@ export function TurnoModal({ visible, onClose, onTurnoChanged }: TurnoModalProps
           {
             text: 'OK',
             onPress: () => {
-              onTurnoChanged();
+              if (onSuccess) onSuccess();
               onClose();
             },
           },
@@ -73,65 +92,247 @@ export function TurnoModal({ visible, onClose, onTurnoChanged }: TurnoModalProps
     }
   };
 
-  const cerrarTurno = async () => {
-    setLoading(true);
-    try {
-      // Marcar turno como cerrado
-      await setEstadoTurno({
-        turnoAbierto: false,
-        fechaCierre: new Date(),
+  const generarReporteInventario = async () => {
+    const productos = await getProductos();
+    const movimientos = await getMovimientos();
+    const ventas = await getVentas();
+    const estadoTurno = await getEstadoTurno();
+
+    // Filtrar movimientos desde la apertura del turno
+    const fechaApertura = estadoTurno.fechaApertura 
+      ? new Date(estadoTurno.fechaApertura) 
+      : new Date();
+    fechaApertura.setHours(0, 0, 0, 0);
+
+    const movimientosDelTurno = movimientos.filter(m => {
+      const fechaMov = new Date(m.fecha);
+      return fechaMov >= fechaApertura;
+    });
+
+    const ventasDelTurno = ventas.filter(v => {
+      const fechaVenta = new Date(v.fecha);
+      return fechaVenta >= fechaApertura;
+    });
+
+    const datosInventario = productos.map(producto => {
+      const stockApertura = producto.stockApertura || 0;
+      
+      const abastecimiento = movimientosDelTurno
+        .filter(m => m.productoId === producto.id && m.tipo === 'abastecimiento')
+        .reduce((sum, m) => sum + m.cantidad, 0);
+
+      const mermas = movimientosDelTurno
+        .filter(m => m.productoId === producto.id && m.tipo === 'merma')
+        .reduce((sum, m) => sum + m.cantidad, 0);
+
+      const ocupadoRamo = movimientosDelTurno
+        .filter(m => m.productoId === producto.id && m.tipo === 'ocupado_ramo')
+        .reduce((sum, m) => sum + m.cantidad, 0);
+
+      const vendidos = ventasDelTurno.reduce((sum, venta) => {
+        const prodVenta = venta.productos.find(p => p.productoId === producto.id);
+        return sum + (prodVenta?.cantidad || 0);
+      }, 0);
+
+      const inventarioCierre = producto.stock;
+
+      return {
+        'Nombre Producto': producto.nombre,
+        'Inventario Apertura': stockApertura,
+        'Abastecimiento': abastecimiento,
+        'Vendidos': vendidos,
+        'Ocupado en Ramo': ocupadoRamo,
+        'Mermas': mermas,
+        'Inventario Cierre': inventarioCierre,
+      };
+    });
+
+    return datosInventario;
+  };
+
+  const generarReporteVentas = async () => {
+    const ventas = await getVentas();
+    const estadoTurno = await getEstadoTurno();
+
+    const fechaApertura = estadoTurno.fechaApertura 
+      ? new Date(estadoTurno.fechaApertura) 
+      : new Date();
+    fechaApertura.setHours(0, 0, 0, 0);
+
+    const ventasDelTurno = ventas.filter(v => {
+      const fechaVenta = new Date(v.fecha);
+      return fechaVenta >= fechaApertura;
+    });
+
+    const datosVentas = ventasDelTurno.map(venta => {
+      const fecha = new Date(venta.fecha);
+      const hora = fecha.toLocaleTimeString('es-CL', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
       });
 
+      const productosTexto = venta.productos
+        .map(p => `${p.productoNombre} (x${p.cantidad})`)
+        .join(', ');
+
+      const metodoPagoTexto = venta.esUber 
+        ? 'UBER' 
+        : (venta.metodoPago 
+          ? venta.metodoPago.charAt(0).toUpperCase() + venta.metodoPago.slice(1)
+          : 'Efectivo');
+
+      return {
+        'Hora': hora,
+        'Productos': productosTexto,
+        'Precio': venta.esUber ? 'UBER' : `$${venta.total}`,
+        'Método de Pago': metodoPagoTexto,
+        'Notas': venta.notas || '',
+      };
+    });
+
+    return datosVentas;
+  };
+
+  const exportarExcel = async () => {
+    // Verificar que los módulos estén disponibles
+    if (!FileSystem?.cacheDirectory || !Sharing?.shareAsync || !XLSX?.utils) {
       Alert.alert(
-        '✅ Turno Cerrado',
-        'El turno se cerró correctamente. El inventario actual se guardó como cierre.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              onTurnoChanged();
-              onClose();
-            },
-          },
-        ]
+        'Error',
+        'Las librerías necesarias no están instaladas correctamente. Ejecuta:\nnpx expo install expo-file-system expo-sharing\nnpm install xlsx'
       );
-    } catch (error) {
-      console.error('Error al cerrar turno:', error);
-      Alert.alert('Error', 'Hubo un problema al cerrar el turno');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const datosInventario = await generarReporteInventario();
+      const datosVentas = await generarReporteVentas();
+
+      if (datosInventario.length === 0 && datosVentas.length === 0) {
+        Alert.alert('Sin datos', 'No hay información para exportar del turno');
+        setLoading(false);
+        return;
+      }
+
+      const wb = XLSX.utils.book_new();
+
+      if (datosInventario.length > 0) {
+        const wsInventario = XLSX.utils.json_to_sheet(datosInventario);
+        
+        // Agregar formato de columnas
+        const wscols = [
+          { wch: 25 }, // Nombre Producto
+          { wch: 18 }, // Inventario Apertura
+          { wch: 15 }, // Abastecimiento
+          { wch: 12 }, // Vendidos
+          { wch: 18 }, // Ocupado en Ramo
+          { wch: 12 }, // Mermas
+          { wch: 18 }, // Inventario Cierre
+        ];
+        wsInventario['!cols'] = wscols;
+        
+        XLSX.utils.book_append_sheet(wb, wsInventario, 'Inventario');
+      }
+
+      if (datosVentas.length > 0) {
+        const wsVentas = XLSX.utils.json_to_sheet(datosVentas);
+        
+        // Agregar formato de columnas
+        const wscolsVentas = [
+          { wch: 10 }, // Hora
+          { wch: 40 }, // Productos
+          { wch: 15 }, // Precio
+          { wch: 18 }, // Método de Pago
+          { wch: 30 }, // Notas
+        ];
+        wsVentas['!cols'] = wscolsVentas;
+        
+        XLSX.utils.book_append_sheet(wb, wsVentas, 'Ventas');
+      }
+
+      const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+
+      const estadoTurno = await getEstadoTurno();
+      const fechaApertura = estadoTurno.fechaApertura 
+        ? new Date(estadoTurno.fechaApertura).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
+      
+      const fileName = `Cierre_Turno_${fechaApertura}.xlsx`;
+      
+      const fileUri = FileSystem.cacheDirectory + fileName;
+
+      await FileSystem.writeAsStringAsync(fileUri, wbout, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const canShare = await Sharing.isAvailableAsync();
+      
+      if (canShare) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: 'Exportar Cierre de Turno',
+          UTI: 'com.microsoft.excel.xlsx',
+        });
+
+        // Marcar turno como cerrado
+        await setEstadoTurno({
+          turnoAbierto: false,
+          fechaCierre: new Date(),
+        });
+
+        Alert.alert(
+          '✅ Turno Cerrado', 
+          'Excel exportado correctamente. El turno se ha cerrado.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                if (onSuccess) onSuccess();
+                onClose();
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Error', 'No se puede compartir archivos en este dispositivo');
+      }
+    } catch (error: any) {
+      console.error('Error al exportar Excel:', error);
+      Alert.alert('Error', `Hubo un problema al exportar: ${error.message || 'Desconocido'}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleConfirmar = () => {
-    if (turnoAbierto) {
-      // Cerrar turno
-      Alert.alert(
-        '🌙 Cerrar Turno',
-        '¿Estás seguro de que deseas cerrar el turno? El inventario actual se guardará como inventario de cierre.',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: 'Cerrar Turno',
-            style: 'destructive',
-            onPress: cerrarTurno,
-          },
-        ]
-      );
-    } else {
-      // Iniciar turno
-      Alert.alert(
-        '🌅 Iniciar Turno',
-        '¿Estás seguro de que deseas iniciar un nuevo turno? El inventario actual se guardará como inventario de apertura.',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: 'Iniciar Turno',
-            onPress: iniciarTurno,
-          },
-        ]
-      );
-    }
+  const handleConfirmarInicioTurno = () => {
+    Alert.alert(
+      '🌅 Iniciar Turno',
+      '¿Deseas iniciar un nuevo turno? El inventario actual se guardará como inventario de apertura.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Iniciar Turno',
+          style: 'default',
+          onPress: iniciarTurno,
+        },
+      ]
+    );
+  };
+
+  const handleConfirmarCierreTurno = () => {
+    Alert.alert(
+      '🌙 Cerrar Turno',
+      '¿Estás seguro de que deseas cerrar el turno? Se exportará un Excel con el reporte completo.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Cerrar Turno',
+          style: 'destructive',
+          onPress: exportarExcel,
+        },
+      ]
+    );
   };
 
   return (
@@ -157,13 +358,16 @@ export function TurnoModal({ visible, onClose, onTurnoChanged }: TurnoModalProps
                   Al cerrar el turno:
                 </ThemedText>
                 <ThemedText style={styles.infoItem}>
-                  • El inventario actual se guardará como <ThemedText type="defaultSemiBold">inventario de cierre</ThemedText>
+                  • Se exportará un Excel con dos hojas
                 </ThemedText>
                 <ThemedText style={styles.infoItem}>
-                  • Podrás exportar el Excel con el resumen completo
+                  • <ThemedText type="defaultSemiBold">Inventario:</ThemedText> Mostrará apertura, movimientos y cierre
                 </ThemedText>
                 <ThemedText style={styles.infoItem}>
-                  • El próximo turno empezará desde cero
+                  • <ThemedText type="defaultSemiBold">Ventas:</ThemedText> Detalle de todas las ventas del turno
+                </ThemedText>
+                <ThemedText style={styles.infoItem}>
+                  • El turno se cerrará y podrás iniciar uno nuevo
                 </ThemedText>
               </>
             ) : (
@@ -175,10 +379,10 @@ export function TurnoModal({ visible, onClose, onTurnoChanged }: TurnoModalProps
                   • El inventario actual se guardará como <ThemedText type="defaultSemiBold">inventario de apertura</ThemedText>
                 </ThemedText>
                 <ThemedText style={styles.infoItem}>
-                  • Todas las ventas, mermas y movimientos se registrarán durante este turno
+                  • Todas las ventas y movimientos se registrarán durante este turno
                 </ThemedText>
                 <ThemedText style={styles.infoItem}>
-                  • Al cerrar, podrás ver el resumen completo
+                  • Al cerrar, verás el reporte completo en Excel
                 </ThemedText>
               </>
             )}
@@ -196,8 +400,8 @@ export function TurnoModal({ visible, onClose, onTurnoChanged }: TurnoModalProps
               { color: turnoAbierto ? '#991b1b' : '#1e40af' }
             ]}>
               {turnoAbierto 
-                ? '⚠️ Asegúrate de haber registrado todas las operaciones del día antes de cerrar'
-                : 'ℹ️ Verifica que el inventario actual sea el correcto antes de iniciar el turno'
+                ? '⚠️ Asegúrate de haber registrado todas las operaciones antes de cerrar'
+                : 'ℹ️ Verifica que el inventario actual sea correcto antes de iniciar'
               }
             </ThemedText>
           </View>
@@ -221,7 +425,7 @@ export function TurnoModal({ visible, onClose, onTurnoChanged }: TurnoModalProps
                   styles.modalBtn, 
                   turnoAbierto ? styles.closeBtn : styles.openBtn
                 ]}
-                onPress={handleConfirmar}>
+                onPress={turnoAbierto ? handleConfirmarCierreTurno : handleConfirmarInicioTurno}>
                 <ThemedText style={styles.modalBtnText}>
                   {turnoAbierto ? '🌙 Cerrar Turno' : '🌅 Iniciar Turno'}
                 </ThemedText>
@@ -243,7 +447,7 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: '90%',
-    maxWidth: 400,
+    maxWidth: 450,
     borderRadius: 16,
     padding: 24,
   },

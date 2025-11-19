@@ -1,6 +1,6 @@
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { addVenta, getProductos, updateProducto } from '@/services/storage';
+import { addVenta, generarId, getProductos, updateProducto } from '@/services/storage';
 import { Producto, ProductoVenta, Venta } from '@/types';
 import { useEffect, useState } from 'react';
 import {
@@ -36,8 +36,12 @@ export function UberSalesModal({ visible, onClose, onSuccess }: UberSalesModalPr
   }, [visible]);
 
   const loadProductos = async () => {
-    const prods = await getProductos();
-    setProductos(prods);
+    try {
+      const prods = await getProductos();
+      setProductos(prods);
+    } catch (error) {
+      console.error('Error al cargar productos:', error);
+    }
   };
 
   const resetForm = () => {
@@ -89,47 +93,52 @@ export function UberSalesModal({ visible, onClose, onSuccess }: UberSalesModalPr
       return;
     }
 
-    // Verificar stock disponible
-    for (const prodVenta of productosEnCarrito) {
-      const producto = productos.find(p => p.id === prodVenta.productoId);
-      if (!producto) continue;
+    try {
+      // Verificar stock disponible
+      for (const prodVenta of productosEnCarrito) {
+        const producto = productos.find(p => p.id === prodVenta.productoId);
+        if (!producto) continue;
 
-      if (prodVenta.cantidad > producto.stock) {
-        Alert.alert(
-          'Stock insuficiente',
-          `${producto.nombre}: Solo hay ${producto.stock} disponibles`
-        );
-        return;
+        if (prodVenta.cantidad > producto.stock) {
+          Alert.alert(
+            'Stock insuficiente',
+            `${producto.nombre}: Solo hay ${producto.stock} disponibles`
+          );
+          return;
+        }
       }
+
+      // Actualizar stocks
+      for (const prodVenta of productosEnCarrito) {
+        const producto = productos.find(p => p.id === prodVenta.productoId);
+        if (!producto) continue;
+
+        const nuevoStock = producto.stock - prodVenta.cantidad;
+        await updateProducto(producto.id, { stock: nuevoStock });
+      }
+
+      const notasFinales = papeleria
+        ? `${notas ? notas + ' | ' : ''}Incluye papelería`
+        : notas;
+
+      const nuevaVenta: Venta = {
+        id: generarId(),
+        fecha: new Date(),
+        productos: productosEnCarrito,
+        total: 0, // Las ventas Uber no tienen precio
+        esUber: true,
+        notas: notasFinales || undefined,
+      };
+
+      await addVenta(nuevaVenta);
+      
+      Alert.alert('✅ Éxito', '¡Venta Uber registrada correctamente!');
+      onSuccess();
+      onClose();
+    } catch (error) {
+      console.error('Error al guardar venta Uber:', error);
+      Alert.alert('Error', 'Hubo un problema al registrar la venta. Por favor intenta nuevamente.');
     }
-
-    // Actualizar stocks
-    for (const prodVenta of productosEnCarrito) {
-      const producto = productos.find(p => p.id === prodVenta.productoId);
-      if (!producto) continue;
-
-      const nuevoStock = producto.stock - prodVenta.cantidad;
-      await updateProducto(producto.id, { stock: nuevoStock });
-    }
-
-    const notasFinales = papeleria
-      ? `${notas ? notas + ' | ' : ''}Incluye papelería`
-      : notas;
-
-    const nuevaVenta: Venta = {
-      id: Date.now().toString(),
-      fecha: new Date(),
-      productos: productosEnCarrito,
-      total: 0, // Las ventas Uber no tienen precio
-      esUber: true,
-      notas: notasFinales || undefined,
-    };
-
-    await addVenta(nuevaVenta);
-    
-    Alert.alert('✅ Éxito', '¡Venta Uber registrada correctamente!');
-    onSuccess();
-    onClose();
   };
 
   return (
