@@ -4,14 +4,16 @@ import { EditProductModal } from '@/components/edit-product-modal';
 import { ExportExcelModal } from '@/components/export-excel-modal';
 import { FabMenu } from '@/components/fab-menu';
 import { ImportExcelModal } from '@/components/import-excel-modal';
+import { ProductionListModal } from '@/components/production-list-modal';
 import { SalesModal } from '@/components/sales-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { TurnoModal } from '@/components/turno-modal'; // ← NUEVO MODAL
+import { TurnoModal } from '@/components/turno-modal';
 import { UberSalesModal } from '@/components/uber-sales-modal';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { addMovimiento, addProducto, deleteProducto, generarId, getEstadoTurno, getProductos, updateProducto } from '@/services/storage';
 import { Categoria, Movimiento, Producto } from '@/types';
+import { fontScale, getSpacing, moderateScale, scale, verticalScale } from '@/utils/responsive';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -41,6 +43,7 @@ export default function InventoryScreen() {
   const [turnoAbierto, setTurnoAbierto] = useState(false);
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [importModalVisible, setImportModalVisible] = useState(false);
+  const [productionListModalVisible, setProductionListModalVisible] = useState(false);
   const colorScheme = useColorScheme();
 
   useEffect(() => {
@@ -48,7 +51,6 @@ export default function InventoryScreen() {
     loadEstadoTurno();
   }, []);
 
-  // Recargar estado del turno cada vez que la pantalla se enfoca
   useFocusEffect(
     useCallback(() => {
       loadEstadoTurno();
@@ -105,14 +107,12 @@ export default function InventoryScreen() {
     }
 
     try {
-      // Actualizar stock
       const nuevoStock = modalTipo === 'abastecimiento'
         ? productoSeleccionado.stock + cantidadNum
         : productoSeleccionado.stock - cantidadNum;
 
       await updateProducto(productoSeleccionado.id, { stock: nuevoStock });
 
-      // Registrar movimiento
       const movimiento: Movimiento = {
         id: generarId(),
         tipo: modalTipo,
@@ -174,7 +174,6 @@ export default function InventoryScreen() {
   };
 
   const handleTurnoSuccess = async () => {
-    // Recargar productos y estado del turno
     await loadProductos();
     await loadEstadoTurno();
   };
@@ -194,10 +193,8 @@ export default function InventoryScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      {/* Header con total del día */}
       <DailyTotalHeader />
 
-      {/* Filtros */}
       <View style={styles.filtrosContainer}>
         <TouchableOpacity
           style={[
@@ -237,7 +234,6 @@ export default function InventoryScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Lista de productos */}
       <ScrollView style={styles.scrollView}>
         {productosFiltrados.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -269,7 +265,9 @@ export default function InventoryScreen() {
                 )}
                 <View style={styles.cardInfo}>
                   <View style={styles.cardTitleRow}>
-                    <ThemedText type="defaultSemiBold">{producto.nombre}</ThemedText>
+                    <ThemedText type="defaultSemiBold" numberOfLines={2} style={styles.productName}>
+                      {producto.nombre}
+                    </ThemedText>
                     <TouchableOpacity 
                       onPress={() => abrirEditarModal(producto)}
                       style={styles.editIcon}>
@@ -308,7 +306,6 @@ export default function InventoryScreen() {
         )}
       </ScrollView>
 
-      {/* Botón flotante con menú desplegable */}
       <FabMenu
         items={[
           {
@@ -330,13 +327,19 @@ export default function InventoryScreen() {
             onPress: () => setUberSalesModalVisible(true),
           },
           {
-            label: 'Exportar Excel',  // NUEVO
+            label: 'Lista de Producción',
+            icon: '📋',
+            color: '#8b5cf6',
+            onPress: () => setProductionListModalVisible(true),
+          },
+          {
+            label: 'Exportar Excel',
             icon: '📤',
             color: '#22c55e',
             onPress: () => setExportModalVisible(true),
           },
           {
-            label: 'Importar Excel',  // NUEVO
+            label: 'Importar Excel',
             icon: '📥',
             color: '#845ef7',
             onPress: () => setImportModalVisible(true),
@@ -350,26 +353,28 @@ export default function InventoryScreen() {
         ]}
       />
 
-      {/* Modal de exportar excel */}
       <ExportExcelModal
         visible={exportModalVisible}
         onClose={() => setExportModalVisible(false)}
       />
 
-      {/* Modal de importar excel */}
       <ImportExcelModal
         visible={importModalVisible}
         onClose={() => setImportModalVisible(false)}
         onSuccess={loadProductos}
       />
-      {/* Modal de agregar producto */}
+
+      <ProductionListModal
+        visible={productionListModalVisible}
+        onClose={() => setProductionListModalVisible(false)}
+      />
+
       <AddProductModal
         visible={addModalVisible}
         onClose={() => setAddModalVisible(false)}
         onSave={handleSaveNewProduct}
       />
 
-      {/* Modal de editar producto */}
       <EditProductModal
         visible={editModalVisible}
         producto={productoSeleccionado}
@@ -381,28 +386,24 @@ export default function InventoryScreen() {
         onDelete={handleDeleteProduct}
       />
 
-      {/* Modal de ventas */}
       <SalesModal
         visible={salesModalVisible}
         onClose={() => setSalesModalVisible(false)}
         onSuccess={loadProductos}
       />
 
-      {/* Modal de ventas Uber */}
       <UberSalesModal
         visible={uberSalesModalVisible}
         onClose={() => setUberSalesModalVisible(false)}
         onSuccess={loadProductos}
       />
 
-      {/* Modal de turno (dinámico: inicio o cierre) */}
       <TurnoModal
         visible={turnoModalVisible}
         onClose={() => setTurnoModalVisible(false)}
         onSuccess={handleTurnoSuccess}
       />
 
-      {/* Modal de merma/abastecimiento/ramo */}
       <Modal
         visible={modalVisible}
         transparent
@@ -417,7 +418,7 @@ export default function InventoryScreen() {
               {getTituloModal()}
             </ThemedText>
             
-            <ThemedText style={styles.modalProductName}>
+            <ThemedText style={styles.modalProductName} numberOfLines={2}>
               {productoSeleccionado?.nombre}
             </ThemedText>
 
@@ -483,13 +484,13 @@ const styles = StyleSheet.create({
   },
   filtrosContainer: {
     flexDirection: 'row',
-    padding: 16,
-    gap: 8,
+    padding: getSpacing().regular,
+    gap: getSpacing().small,
   },
   filtroBtn: {
     flex: 1,
-    padding: 10,
-    borderRadius: 8,
+    padding: moderateScale(10),
+    borderRadius: scale(8),
     alignItems: 'center',
   },
   filtroBtnActivo: {
@@ -497,23 +498,25 @@ const styles = StyleSheet.create({
   },
   filtroBtnText: {
     fontWeight: '600',
+    fontSize: fontScale(12),
   },
   scrollView: {
     flex: 1,
-    padding: 16,
+    padding: getSpacing().regular,
   },
   emptyContainer: {
-    padding: 32,
+    padding: getSpacing().xxlarge,
     alignItems: 'center',
   },
   emptyText: {
     textAlign: 'center',
     opacity: 0.6,
+    fontSize: fontScale(14),
   },
   card: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+    padding: getSpacing().regular,
+    borderRadius: moderateScale(12),
+    marginBottom: getSpacing().medium,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -522,24 +525,24 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     flexDirection: 'row',
-    marginBottom: 12,
+    marginBottom: getSpacing().medium,
   },
   productImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    marginRight: 12,
+    width: scale(60),
+    height: scale(60),
+    borderRadius: scale(8),
+    marginRight: getSpacing().medium,
   },
   placeholderImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
+    width: scale(60),
+    height: scale(60),
+    borderRadius: scale(8),
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: getSpacing().medium,
   },
   placeholderText: {
-    fontSize: 24,
+    fontSize: fontScale(24),
   },
   cardInfo: {
     flex: 1,
@@ -550,30 +553,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  productName: {
+    flex: 1,
+    marginRight: getSpacing().small,
+  },
   editIcon: {
-    padding: 4,
+    padding: scale(4),
   },
   editIconText: {
-    fontSize: 18,
+    fontSize: fontScale(18),
   },
   stockText: {
-    fontSize: 14,
+    fontSize: fontScale(14),
     opacity: 0.7,
-    marginTop: 4,
+    marginTop: verticalScale(4),
   },
   warningText: {
-    fontSize: 12,
+    fontSize: fontScale(12),
     color: '#ff6b6b',
-    marginTop: 4,
+    marginTop: verticalScale(4),
   },
   cardActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: getSpacing().small,
   },
   actionBtn: {
     flex: 1,
-    padding: 10,
-    borderRadius: 8,
+    padding: moderateScale(10),
+    borderRadius: scale(8),
     alignItems: 'center',
   },
   mermaBtn: {
@@ -588,7 +595,7 @@ const styles = StyleSheet.create({
   actionBtnText: {
     color: '#fff',
     fontWeight: '600',
-    fontSize: 13,
+    fontSize: fontScale(13),
   },
   modalOverlay: {
     flex: 1,
@@ -598,42 +605,44 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: '85%',
-    borderRadius: 16,
-    padding: 20,
+    maxWidth: scale(400),
+    borderRadius: moderateScale(16),
+    padding: getSpacing().large,
   },
   modalTitle: {
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: getSpacing().regular,
+    fontSize: fontScale(20),
   },
   modalProductName: {
     textAlign: 'center',
-    fontSize: 18,
-    marginBottom: 20,
+    fontSize: fontScale(18),
+    marginBottom: getSpacing().large,
     opacity: 0.8,
   },
   inputContainer: {
-    marginBottom: 16,
+    marginBottom: getSpacing().regular,
   },
   input: {
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
-    fontSize: 16,
+    borderRadius: scale(8),
+    padding: moderateScale(12),
+    marginTop: verticalScale(8),
+    fontSize: fontScale(16),
   },
   textArea: {
-    height: 80,
+    height: verticalScale(80),
     textAlignVertical: 'top',
   },
   modalActions: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
+    gap: getSpacing().medium,
+    marginTop: verticalScale(8),
   },
   modalBtn: {
     flex: 1,
-    padding: 14,
-    borderRadius: 8,
+    padding: moderateScale(14),
+    borderRadius: scale(8),
     alignItems: 'center',
   },
   cancelBtn: {
@@ -645,6 +654,6 @@ const styles = StyleSheet.create({
   modalBtnText: {
     color: '#fff',
     fontWeight: '600',
-    fontSize: 16,
+    fontSize: fontScale(16),
   },
 });

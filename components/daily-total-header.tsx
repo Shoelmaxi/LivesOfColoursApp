@@ -1,6 +1,7 @@
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getVentas } from '@/services/storage';
+import { fontScale, getSpacing, verticalScale } from '@/utils/responsive';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -18,7 +19,7 @@ export function DailyTotalHeader() {
     const ventasHoy = ventas.filter(v => {
       const fechaVenta = new Date(v.fecha);
       fechaVenta.setHours(0, 0, 0, 0);
-      return fechaVenta.getTime() === hoy.getTime() && !v.esUber; // Excluir ventas Uber
+      return fechaVenta.getTime() === hoy.getTime() && !v.esUber;
     });
 
     const total = ventasHoy.reduce((sum, v) => sum + v.total, 0);
@@ -39,10 +40,14 @@ export function DailyTotalHeader() {
     ]}>
       <View style={styles.content}>
         <ThemedText style={styles.label}>💰 Total del día</ThemedText>
-        <ThemedText style={[
-          styles.amount,
-          { color: colorScheme === 'dark' ? '#fff' : '#0a7ea4' }
-        ]}>
+        <ThemedText 
+          style={[
+            styles.amount,
+            { color: colorScheme === 'dark' ? '#fff' : '#0a7ea4' }
+          ]}
+          adjustsFontSizeToFit
+          numberOfLines={1}
+          minimumFontScale={0.7}>
           ${totalDelDia.toLocaleString('es-CL')}
         </ThemedText>
         <ThemedText style={styles.subtext}>
@@ -55,8 +60,8 @@ export function DailyTotalHeader() {
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: getSpacing().regular,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -67,17 +72,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   label: {
-    fontSize: 14,
+    fontSize: fontScale(14),
     opacity: 0.8,
-    marginBottom: 4,
+    marginBottom: verticalScale(4),
   },
   amount: {
-    fontSize: 28,
+    fontSize: fontScale(28),
     fontWeight: 'bold',
+    flexShrink: 1,
   },
   subtext: {
-    fontSize: 12,
+    fontSize: fontScale(12),
     opacity: 0.7,
-    marginTop: 2,
+    marginTop: verticalScale(2),
   },
 });
