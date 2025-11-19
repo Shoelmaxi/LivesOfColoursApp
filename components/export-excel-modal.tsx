@@ -1,28 +1,18 @@
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getMovimientos, getProductos, getVentas } from '@/services/storage';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    StyleSheet,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Modal,
+  StyleSheet,
+  TouchableOpacity,
+  View
 } from 'react-native';
-
-// Importaciones condicionales
-let FileSystem: any;
-let Sharing: any;
-let XLSX: any;
-
-try {
-  FileSystem = require('expo-file-system/legacy');
-  Sharing = require('expo-sharing');
-  XLSX = require('xlsx');
-} catch (e) {
-  console.log('Error cargando módulos:', e);
-}
+import * as XLSX from 'xlsx';
 
 interface ExportExcelModalProps {
   visible: boolean;
@@ -73,7 +63,7 @@ export function ExportExcelModal({ visible, onClose }: ExportExcelModalProps) {
         return sum + (prodVenta?.cantidad || 0);
       }, 0);
 
-      // SIN inventario final (diferencia con cierre de turno)
+      // Para exportación durante turno: incluimos el stock actual como "Inventario Final"
       return {
         'Nombre Producto': producto.nombre,
         'Inventario Apertura': stockApertura,
@@ -81,7 +71,7 @@ export function ExportExcelModal({ visible, onClose }: ExportExcelModalProps) {
         'Vendidos': vendidos,
         'Ocupado en Ramo': ocupadoRamo,
         'Mermas': mermas,
-        'Stock Actual': producto.stock,
+        'Inventario Final': producto.stock, // ← CLAVE: Stock actual del momento
       };
     });
 
@@ -131,7 +121,8 @@ export function ExportExcelModal({ visible, onClose }: ExportExcelModalProps) {
   };
 
   const exportarExcel = async () => {
-    if (!FileSystem || !Sharing || !XLSX) {
+    // Verificar que los módulos estén disponibles
+    if (!FileSystem?.cacheDirectory || !Sharing?.shareAsync || !XLSX?.utils) {
       Alert.alert(
         'Error',
         'Las librerías necesarias no están instaladas correctamente.'
@@ -243,7 +234,7 @@ export function ExportExcelModal({ visible, onClose }: ExportExcelModalProps) {
 
           <View style={styles.infoBox}>
             <ThemedText style={styles.infoBoxText}>
-              💡 Este reporte NO afecta el inventario de apertura. Es solo para compartir información entre turnos.
+              💡 Este reporte incluye el stock actual del momento. Úsalo para traspasar información entre dispositivos durante el mismo turno.
             </ThemedText>
           </View>
 

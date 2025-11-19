@@ -125,11 +125,15 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
           p => p.nombre.toLowerCase() === nombreProducto.toLowerCase()
         );
 
+        // Usar "Inventario Final" si existe, sino "Inventario Cierre", sino "Stock Actual"
+        const stockFinal = row['Inventario Final'] ?? row['Inventario Cierre'] ?? row['Stock Actual'] ?? 0;
+        const stockApertura = row['Inventario Apertura'] ?? stockFinal;
+
         if (productoExistente) {
-          // Actualizar producto existente manteniendo stockApertura original
+          // Actualizar producto existente manteniendo stockApertura original del Excel
           await updateProducto(productoExistente.id, {
-            stock: row['Inventario Cierre'] || row['Stock Actual'] || productoExistente.stock,
-            stockApertura: row['Inventario Apertura'] || productoExistente.stockApertura,
+            stock: stockFinal,
+            stockApertura: stockApertura,
           });
           productosActualizados++;
         } else {
@@ -138,9 +142,9 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
             id: Date.now().toString() + Math.random(),
             nombre: nombreProducto,
             categoria: 'flores_sueltas',
-            stock: row['Inventario Cierre'] || row['Stock Actual'] || 0,
+            stock: stockFinal,
             stockMinimo: 5,
-            stockApertura: row['Inventario Apertura'] || 0,
+            stockApertura: stockApertura,
             unidad: 'unidad',
             fechaCreacion: new Date(),
           };
@@ -240,7 +244,8 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
         const nombreProducto = row['Nombre Producto'];
         if (!nombreProducto) continue;
 
-        const inventarioCierre = row['Inventario Cierre'] || row['Stock Actual'] || 0;
+        // Para nuevo turno: usar "Inventario Cierre" del turno anterior
+        const inventarioCierre = row['Inventario Cierre'] ?? row['Inventario Final'] ?? row['Stock Actual'] ?? 0;
 
         const productoExistente = productosActuales.find(
           p => p.nombre.toLowerCase() === nombreProducto.toLowerCase()
@@ -457,11 +462,15 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
                   <ThemedText type="defaultSemiBold" style={styles.previewTitle}>
                     📦 Inventario ({previewData.inventario.length} productos)
                   </ThemedText>
-                  {previewData.inventario.slice(0, 5).map((item, index) => (
-                    <ThemedText key={index} style={styles.previewItem}>
-                      • {item['Nombre Producto']} - Cierre: {item['Inventario Cierre'] || item['Stock Actual']}
-                    </ThemedText>
-                  ))}
+                  {previewData.inventario.slice(0, 5).map((item, index) => {
+                    const stockFinal = item['Inventario Final'] ?? item['Inventario Cierre'] ?? item['Stock Actual'];
+                    const stockApertura = item['Inventario Apertura'];
+                    return (
+                      <ThemedText key={index} style={styles.previewItem}>
+                        • {item['Nombre Producto']} - Apertura: {stockApertura} → Final: {stockFinal}
+                      </ThemedText>
+                    );
+                  })}
                   {previewData.inventario.length > 5 && (
                     <ThemedText style={styles.previewMore}>
                       ... y {previewData.inventario.length - 5} más
