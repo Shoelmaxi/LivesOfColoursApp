@@ -39,6 +39,8 @@ export default function InventoryScreen() {
   const [uberSalesModalVisible, setUberSalesModalVisible] = useState(false);
   const [turnoModalVisible, setTurnoModalVisible] = useState(false);
   const [turnoAbierto, setTurnoAbierto] = useState(false);
+  const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [importModalVisible, setImportModalVisible] = useState(false);
   const colorScheme = useColorScheme();
 
   useEffect(() => {

@@ -1,18 +1,18 @@
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { addMovimiento, addProducto, addVenta, getProductos, updateProducto } from '@/services/storage';
-import { Movimiento, Producto, Venta } from '@/types';
+import { addProducto, addVenta, getEstadoTurno, getProductos, setEstadoTurno, updateProducto } from '@/services/storage';
+import { Producto, Venta } from '@/types';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 // Importaciones condicionales
@@ -29,13 +29,23 @@ interface ImportExcelModalProps {
   onSuccess: () => void;
 }
 
+type ModoImportacion = 'traspaso' | 'nuevo' | null;
+
 export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelModalProps) {
   const [loading, setLoading] = useState(false);
   const [previewData, setPreviewData] = useState<{
     inventario: any[];
     ventas: any[];
   } | null>(null);
+  const [modoSeleccionado, setModoSeleccionado] = useState<ModoImportacion>(null);
+  const [turnoActualAbierto, setTurnoActualAbierto] = useState(false);
   const colorScheme = useColorScheme();
+
+  const handleOpen = async () => {
+    // Verificar estado del turno actual al abrir el modal
+    const estado = await getEstadoTurno();
+    setTurnoActualAbierto(estado.turnoAbierto);
+  };
 
   const pickExcelFile = async () => {
     try {
@@ -65,29 +75,24 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
         return;
       }
 
-      // Leer el archivo
       const fileContent = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Parsear el Excel
       const workbook = XLSX.read(fileContent, { type: 'base64' });
 
-      // Procesar hoja de Inventario
       let inventarioData: any[] = [];
       if (workbook.SheetNames.includes('Inventario')) {
         const inventarioSheet = workbook.Sheets['Inventario'];
         inventarioData = XLSX.utils.sheet_to_json(inventarioSheet);
       }
 
-      // Procesar hoja de Ventas
       let ventasData: any[] = [];
       if (workbook.SheetNames.includes('Ventas')) {
         const ventasSheet = workbook.Sheets['Ventas'];
         ventasData = XLSX.utils.sheet_to_json(ventasSheet);
       }
 
-      // Mostrar preview
       setPreviewData({
         inventario: inventarioData,
         ventas: ventasData,
@@ -101,7 +106,7 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
     }
   };
 
-  const importarDatos = async () => {
+  const importarDatosTraspaso = async () => {
     if (!previewData) return;
 
     setLoading(true);
@@ -121,46 +126,19 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
         );
 
         if (productoExistente) {
-          // Actualizar producto existente
+          // Actualizar producto existente manteniendo stockApertura original
           await updateProducto(productoExistente.id, {
-            stock: row['Inventario Final'] || productoExistente.stock,
+            stock: row['Inventario Cierre'] || row['Stock Actual'] || productoExistente.stock,
             stockApertura: row['Inventario Apertura'] || productoExistente.stockApertura,
           });
           productosActualizados++;
-
-          // Registrar movimientos si hay
-          if (row['Abastecimiento'] && row['Abastecimiento'] > 0) {
-            const movimiento: Movimiento = {
-              id: Date.now().toString() + Math.random(),
-              tipo: 'abastecimiento',
-              productoId: productoExistente.id,
-              productoNombre: productoExistente.nombre,
-              cantidad: row['Abastecimiento'],
-              fecha: new Date(),
-              notas: 'Importado desde Excel',
-            };
-            await addMovimiento(movimiento);
-          }
-
-          if (row['Mermas'] && row['Mermas'] > 0) {
-            const movimiento: Movimiento = {
-              id: Date.now().toString() + Math.random(),
-              tipo: 'merma',
-              productoId: productoExistente.id,
-              productoNombre: productoExistente.nombre,
-              cantidad: row['Mermas'],
-              fecha: new Date(),
-              notas: 'Importado desde Excel',
-            };
-            await addMovimiento(movimiento);
-          }
         } else {
           // Crear nuevo producto
           const nuevoProducto: Producto = {
             id: Date.now().toString() + Math.random(),
             nombre: nombreProducto,
             categoria: 'flores_sueltas',
-            stock: row['Inventario Final'] || 0,
+            stock: row['Inventario Cierre'] || row['Stock Actual'] || 0,
             stockMinimo: 5,
             stockApertura: row['Inventario Apertura'] || 0,
             unidad: 'unidad',
@@ -176,7 +154,6 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
       for (const row of previewData.ventas) {
         if (!row['Productos']) continue;
 
-        // Parsear productos
         const productosTexto = row['Productos'];
         const productos = productosTexto.split(',').map((p: string) => {
           const match = p.trim().match(/^(.+?)\s*\(x(\d+)\)$/);
@@ -195,12 +172,10 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
           return null;
         }).filter(Boolean);
 
-        // Parsear precio
         const precioStr = row['Precio'] || '0';
         const esUber = precioStr === 'UBER';
         const precio = esUber ? 0 : parseInt(precioStr.replace(/[^\d]/g, '')) || 0;
 
-        // Parsear método de pago
         const metodoPagoStr = row['Método de Pago'] || 'Efectivo';
         let metodoPago: any = 'efectivo';
         if (metodoPagoStr.toLowerCase().includes('transferencia')) {
@@ -223,9 +198,15 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
         ventasImportadas++;
       }
 
+      // MANTENER TURNO ABIERTO (Traspaso)
+      await setEstadoTurno({
+        turnoAbierto: true,
+        fechaApertura: (await getEstadoTurno()).fechaApertura || new Date(),
+      });
+
       Alert.alert(
-        '✅ Importación exitosa',
-        `Se importaron:\n• ${productosImportados} productos nuevos\n• ${productosActualizados} productos actualizados\n• ${ventasImportadas} ventas`,
+        '✅ Traspaso exitoso',
+        `Datos importados:\n• ${productosImportados} productos nuevos\n• ${productosActualizados} productos actualizados\n• ${ventasImportadas} ventas\n\n🔄 El turno continúa abierto`,
         [
           {
             text: 'OK',
@@ -244,9 +225,95 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
     }
   };
 
+  const importarDatosNuevoTurno = async () => {
+    if (!previewData) return;
+
+    setLoading(true);
+    try {
+      const productosActuales = await getProductos();
+
+      // Importar inventario
+      let productosImportados = 0;
+      let productosActualizados = 0;
+
+      for (const row of previewData.inventario) {
+        const nombreProducto = row['Nombre Producto'];
+        if (!nombreProducto) continue;
+
+        const inventarioCierre = row['Inventario Cierre'] || row['Stock Actual'] || 0;
+
+        const productoExistente = productosActuales.find(
+          p => p.nombre.toLowerCase() === nombreProducto.toLowerCase()
+        );
+
+        if (productoExistente) {
+          // El cierre del turno anterior es la apertura del nuevo
+          await updateProducto(productoExistente.id, {
+            stock: inventarioCierre,
+            stockApertura: inventarioCierre,
+          });
+          productosActualizados++;
+        } else {
+          const nuevoProducto: Producto = {
+            id: Date.now().toString() + Math.random(),
+            nombre: nombreProducto,
+            categoria: 'flores_sueltas',
+            stock: inventarioCierre,
+            stockMinimo: 5,
+            stockApertura: inventarioCierre,
+            unidad: 'unidad',
+            fechaCreacion: new Date(),
+          };
+          await addProducto(nuevoProducto);
+          productosImportados++;
+        }
+      }
+
+      // NO importar ventas (ya pertenecen al turno anterior)
+
+      // INICIAR NUEVO TURNO
+      await setEstadoTurno({
+        turnoAbierto: true,
+        fechaApertura: new Date(),
+      });
+
+      Alert.alert(
+        '✅ Nuevo turno iniciado',
+        `Inventario importado:\n• ${productosImportados} productos nuevos\n• ${productosActualizados} productos actualizados\n\n🌅 Nuevo turno iniciado con el inventario del cierre anterior`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              onSuccess();
+              onClose();
+            },
+          },
+        ]
+      );
+    } catch (error: any) {
+      console.error('Error al importar datos:', error);
+      Alert.alert('Error', `Hubo un problema al importar: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImportar = () => {
+    if (modoSeleccionado === 'traspaso') {
+      importarDatosTraspaso();
+    } else if (modoSeleccionado === 'nuevo') {
+      importarDatosNuevoTurno();
+    }
+  };
+
   const handleClose = () => {
     setPreviewData(null);
+    setModoSeleccionado(null);
     onClose();
+  };
+
+  const handleModalOpen = () => {
+    handleOpen();
   };
 
   return (
@@ -254,7 +321,8 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={handleClose}>
+      onRequestClose={handleClose}
+      onShow={handleModalOpen}>
       <View style={styles.modalOverlay}>
         <View
           style={[
@@ -268,27 +336,23 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
           {!previewData ? (
             <>
               <ThemedText style={styles.modalDescription}>
-                Selecciona un archivo Excel exportado previamente para importar los datos de inventario y ventas.
+                Selecciona un archivo Excel exportado previamente para importar los datos.
               </ThemedText>
+
+              {turnoActualAbierto && (
+                <View style={[styles.warningBox, { backgroundColor: '#fff3cd', borderColor: '#ffc107' }]}>
+                  <ThemedText style={[styles.warningText, { color: '#856404' }]}>
+                    ⚠️ Tienes un turno abierto. Al importar, puedes elegir continuar el turno o iniciar uno nuevo.
+                  </ThemedText>
+                </View>
+              )}
 
               <View style={styles.infoContainer}>
                 <ThemedText style={styles.infoItem}>
                   • El archivo debe tener las hojas "Inventario" y "Ventas"
                 </ThemedText>
                 <ThemedText style={styles.infoItem}>
-                  • Los productos existentes se actualizarán
-                </ThemedText>
-                <ThemedText style={styles.infoItem}>
-                  • Los productos nuevos se agregarán
-                </ThemedText>
-                <ThemedText style={styles.infoItem}>
-                  • Las ventas se agregarán al historial
-                </ThemedText>
-              </View>
-
-              <View style={styles.warningBox}>
-                <ThemedText style={styles.warningText}>
-                  ⚠️ Esta acción modificará tu inventario actual. Asegúrate de que el archivo sea correcto.
+                  • Elige el modo de importación que necesites
                 </ThemedText>
               </View>
 
@@ -312,10 +376,80 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
                 </View>
               )}
             </>
+          ) : !modoSeleccionado ? (
+            <>
+              <ThemedText style={styles.modalDescription}>
+                Selecciona cómo deseas importar los datos:
+              </ThemedText>
+
+              {/* Opción Traspaso */}
+              <TouchableOpacity
+                style={[
+                  styles.modoCard,
+                  { 
+                    backgroundColor: colorScheme === 'dark' ? '#1a1a1a' : '#f0f9ff',
+                    borderColor: '#3b82f6'
+                  }
+                ]}
+                onPress={() => setModoSeleccionado('traspaso')}>
+                <View style={styles.modoHeader}>
+                  <ThemedText type="defaultSemiBold" style={[styles.modoTitle, { color: '#3b82f6' }]}>
+                    🔄 Traspaso de Turno
+                  </ThemedText>
+                </View>
+                <ThemedText style={styles.modoDescription}>
+                  Continúa el mismo turno en este dispositivo
+                </ThemedText>
+                <View style={styles.modoDetails}>
+                  <ThemedText style={styles.modoDetailItem}>✓ Mantiene inventario de apertura</ThemedText>
+                  <ThemedText style={styles.modoDetailItem}>✓ Importa todas las ventas</ThemedText>
+                  <ThemedText style={styles.modoDetailItem}>✓ El turno sigue abierto</ThemedText>
+                </View>
+                <View style={[styles.modoBadge, { backgroundColor: '#3b82f6' }]}>
+                  <ThemedText style={styles.modoBadgeText}>👥 Cambio de dispositivo</ThemedText>
+                </View>
+              </TouchableOpacity>
+
+              {/* Opción Nuevo Turno */}
+              <TouchableOpacity
+                style={[
+                  styles.modoCard,
+                  { 
+                    backgroundColor: colorScheme === 'dark' ? '#1a1a1a' : '#f0fdf4',
+                    borderColor: '#10b981'
+                  }
+                ]}
+                onPress={() => setModoSeleccionado('nuevo')}>
+                <View style={styles.modoHeader}>
+                  <ThemedText type="defaultSemiBold" style={[styles.modoTitle, { color: '#10b981' }]}>
+                    🌅 Nuevo Turno
+                  </ThemedText>
+                </View>
+                <ThemedText style={styles.modoDescription}>
+                  Inicia un nuevo turno con el inventario del cierre anterior
+                </ThemedText>
+                <View style={styles.modoDetails}>
+                  <ThemedText style={styles.modoDetailItem}>✓ Cierre anterior = Apertura nueva</ThemedText>
+                  <ThemedText style={styles.modoDetailItem}>✓ NO importa ventas antiguas</ThemedText>
+                  <ThemedText style={styles.modoDetailItem}>✓ Inicia turno fresco</ThemedText>
+                </View>
+                <View style={[styles.modoBadge, { backgroundColor: '#10b981' }]}>
+                  <ThemedText style={styles.modoBadgeText}>📅 Cambio de día/turno</ThemedText>
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalBtn, styles.cancelBtn]}
+                  onPress={() => setPreviewData(null)}>
+                  <ThemedText style={styles.modalBtnText}>← Atrás</ThemedText>
+                </TouchableOpacity>
+              </View>
+            </>
           ) : (
             <>
               <ThemedText style={styles.modalDescription}>
-                Vista previa de los datos a importar:
+                Vista previa - Modo: {modoSeleccionado === 'traspaso' ? '🔄 Traspaso' : '🌅 Nuevo Turno'}
               </ThemedText>
 
               <ScrollView style={styles.previewContainer}>
@@ -325,7 +459,7 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
                   </ThemedText>
                   {previewData.inventario.slice(0, 5).map((item, index) => (
                     <ThemedText key={index} style={styles.previewItem}>
-                      • {item['Nombre Producto']} - Stock: {item['Inventario Final']}
+                      • {item['Nombre Producto']} - Cierre: {item['Inventario Cierre'] || item['Stock Actual']}
                     </ThemedText>
                   ))}
                   {previewData.inventario.length > 5 && (
@@ -335,21 +469,31 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
                   )}
                 </View>
 
-                <View style={styles.previewSection}>
-                  <ThemedText type="defaultSemiBold" style={styles.previewTitle}>
-                    💰 Ventas ({previewData.ventas.length} registros)
-                  </ThemedText>
-                  {previewData.ventas.slice(0, 5).map((item, index) => (
-                    <ThemedText key={index} style={styles.previewItem}>
-                      • {item['Hora']} - {item['Precio']}
+                {modoSeleccionado === 'traspaso' && (
+                  <View style={styles.previewSection}>
+                    <ThemedText type="defaultSemiBold" style={styles.previewTitle}>
+                      💰 Ventas ({previewData.ventas.length} registros)
                     </ThemedText>
-                  ))}
-                  {previewData.ventas.length > 5 && (
-                    <ThemedText style={styles.previewMore}>
-                      ... y {previewData.ventas.length - 5} más
+                    {previewData.ventas.slice(0, 5).map((item, index) => (
+                      <ThemedText key={index} style={styles.previewItem}>
+                        • {item['Hora']} - {item['Precio']}
+                      </ThemedText>
+                    ))}
+                    {previewData.ventas.length > 5 && (
+                      <ThemedText style={styles.previewMore}>
+                        ... y {previewData.ventas.length - 5} más
+                      </ThemedText>
+                    )}
+                  </View>
+                )}
+
+                {modoSeleccionado === 'nuevo' && (
+                  <View style={[styles.infoBox, { backgroundColor: '#dbeafe', borderColor: '#93c5fd' }]}>
+                    <ThemedText style={[styles.infoBoxText, { color: '#1e40af' }]}>
+                      ℹ️ Las ventas NO se importarán. Solo el inventario de cierre se usará como apertura del nuevo turno.
                     </ThemedText>
-                  )}
-                </View>
+                  </View>
+                )}
               </ScrollView>
 
               {loading ? (
@@ -361,12 +505,12 @@ export function ImportExcelModal({ visible, onClose, onSuccess }: ImportExcelMod
                 <View style={styles.modalActions}>
                   <TouchableOpacity
                     style={[styles.modalBtn, styles.cancelBtn]}
-                    onPress={handleClose}>
-                    <ThemedText style={styles.modalBtnText}>Cancelar</ThemedText>
+                    onPress={() => setModoSeleccionado(null)}>
+                    <ThemedText style={styles.modalBtnText}>← Cambiar modo</ThemedText>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalBtn, styles.confirmBtn]}
-                    onPress={importarDatos}>
+                    onPress={handleImportar}>
                     <ThemedText style={styles.modalBtnText}>Importar</ThemedText>
                   </TouchableOpacity>
                 </View>
@@ -388,7 +532,7 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: '90%',
-    maxHeight: '80%',
+    maxHeight: '85%',
     borderRadius: 16,
     padding: 24,
   },
@@ -398,7 +542,7 @@ const styles = StyleSheet.create({
   },
   modalDescription: {
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
     opacity: 0.8,
   },
   infoContainer: {
@@ -410,17 +554,50 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   warningBox: {
-    backgroundColor: '#fff3cd',
     padding: 12,
     borderRadius: 8,
-    marginBottom: 20,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#ffc107',
   },
   warningText: {
-    color: '#856404',
     fontSize: 13,
     lineHeight: 18,
+  },
+  modoCard: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 2,
+  },
+  modoHeader: {
+    marginBottom: 8,
+  },
+  modoTitle: {
+    fontSize: 18,
+  },
+  modoDescription: {
+    fontSize: 14,
+    opacity: 0.8,
+    marginBottom: 12,
+  },
+  modoDetails: {
+    gap: 6,
+    marginBottom: 12,
+  },
+  modoDetailItem: {
+    fontSize: 13,
+    opacity: 0.7,
+  },
+  modoBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  modoBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   loadingContainer: {
     alignItems: 'center',
@@ -452,6 +629,16 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     marginLeft: 8,
     fontStyle: 'italic',
+  },
+  infoBox: {
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    borderWidth: 1,
+  },
+  infoBoxText: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   modalActions: {
     flexDirection: 'row',
