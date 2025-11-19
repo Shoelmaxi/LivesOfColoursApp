@@ -1,7 +1,9 @@
 import { AddProductModal } from '@/components/add-product-modal';
 import { DailyTotalHeader } from '@/components/daily-total-header';
 import { EditProductModal } from '@/components/edit-product-modal';
+import { ExportExcelModal } from '@/components/export-excel-modal';
 import { FabMenu } from '@/components/fab-menu';
+import { ImportExcelModal } from '@/components/import-excel-modal';
 import { SalesModal } from '@/components/sales-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -326,6 +328,18 @@ export default function InventoryScreen() {
             onPress: () => setUberSalesModalVisible(true),
           },
           {
+            label: 'Exportar Excel',  // NUEVO
+            icon: '📤',
+            color: '#22c55e',
+            onPress: () => setExportModalVisible(true),
+          },
+          {
+            label: 'Importar Excel',  // NUEVO
+            icon: '📥',
+            color: '#845ef7',
+            onPress: () => setImportModalVisible(true),
+          },
+          {
             label: turnoAbierto ? 'Cerrar Turno' : 'Iniciar Turno',
             icon: turnoAbierto ? '🌙' : '🌅',
             color: turnoAbierto ? '#f97316' : '#10b981',
@@ -334,6 +348,18 @@ export default function InventoryScreen() {
         ]}
       />
 
+      {/* Modal de exportar excel */}
+      <ExportExcelModal
+        visible={exportModalVisible}
+        onClose={() => setExportModalVisible(false)}
+      />
+
+      {/* Modal de importar excel */}
+      <ImportExcelModal
+        visible={importModalVisible}
+        onClose={() => setImportModalVisible(false)}
+        onSuccess={loadProductos}
+      />
       {/* Modal de agregar producto */}
       <AddProductModal
         visible={addModalVisible}
