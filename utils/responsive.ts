@@ -1,4 +1,6 @@
-import { Dimensions, PixelRatio } from 'react-native';
+// utils/responsive.ts - VERSIÓN MEJORADA
+import { useEffect, useState } from 'react';
+import { Dimensions, PixelRatio, Platform } from 'react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -34,7 +36,9 @@ export const moderateScale = (size: number, factor: number = 0.5): number => {
  */
 export const fontScale = (size: number): number => {
   const scaled = moderateScale(size, 0.3);
-  return Math.round(PixelRatio.roundToNearestPixel(scaled));
+  const rounded = Math.round(PixelRatio.roundToNearestPixel(scaled));
+  // Asegurar tamaño mínimo de fuente
+  return Math.max(rounded, size * 0.85);
 };
 
 /**
@@ -84,16 +88,17 @@ export const getFontSizes = () => ({
 });
 
 /**
- * Obtiene espaciado responsivo
+ * Obtiene espaciado responsivo uniforme
  */
 export const getSpacing = () => ({
-  tiny: scale(4),
-  small: scale(8),
-  medium: scale(12),
-  regular: scale(16),
-  large: scale(20),
-  xlarge: scale(24),
-  xxlarge: scale(32),
+  tiny: moderateScale(4),
+  small: moderateScale(8),
+  medium: moderateScale(12),
+  regular: moderateScale(16),
+  large: moderateScale(20),
+  xlarge: moderateScale(24),
+  xxlarge: moderateScale(32),
+  xxxlarge: moderateScale(40),
 });
 
 /**
@@ -138,12 +143,35 @@ export const getModalWidth = (percentage: number = 0.9): number => {
 };
 
 /**
- * Listener para cambios de orientación
+ * Calcula el espaciado del FAB menu
+ */
+export const getFabSpacing = () => {
+  const baseSpacing = verticalScale(80);
+  return {
+    itemSpacing: baseSpacing,
+    bottomOffset: verticalScale(20),
+    rightOffset: scale(20),
+  };
+};
+
+/**
+ * Obtiene configuración responsive para cards
+ */
+export const getCardConfig = () => ({
+  padding: getSpacing().regular,
+  borderRadius: moderateScale(12),
+  margin: getSpacing().medium,
+  imageSize: scale(60),
+  gap: getSpacing().small,
+});
+
+/**
+ * Hook para dimensiones responsivas con actualizaciones
  */
 export const useResponsiveDimensions = () => {
-  const [dimensions, setDimensions] = React.useState(getDimensions());
+  const [dimensions, setDimensions] = useState(getDimensions());
 
-  React.useEffect(() => {
+  useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({ window }) => {
       setDimensions({ width: window.width, height: window.height });
     });
@@ -154,5 +182,41 @@ export const useResponsiveDimensions = () => {
   return dimensions;
 };
 
-// Importar React para el hook
-import * as React from 'react';
+/**
+ * Obtiene configuración para headers
+ */
+export const getHeaderConfig = () => ({
+  height: verticalScale(Platform.OS === 'ios' ? 100 : 80),
+  paddingHorizontal: getSpacing().regular,
+  paddingVertical: verticalScale(12),
+  titleSize: getFontSizes().xlarge,
+  subtitleSize: getFontSizes().small,
+});
+
+/**
+ * Obtiene configuración para el tab bar
+ */
+export const getTabBarConfig = () => ({
+  height: verticalScale(60),
+  iconSize: scale(28),
+  labelSize: fontScale(12),
+  padding: getSpacing().small,
+});
+
+/**
+ * Limita el texto para evitar desbordamiento
+ */
+export const getMaxTextWidth = (containerWidth: number, padding: number = 0) => {
+  return containerWidth - (padding * 2);
+};
+
+/**
+ * Obtiene configuración para inputs
+ */
+export const getInputConfig = () => ({
+  height: verticalScale(44),
+  fontSize: fontScale(16),
+  padding: moderateScale(12),
+  borderRadius: moderateScale(8),
+  borderWidth: 1,
+});
